@@ -1,0 +1,15 @@
+[package]
+name = "nix-check-deps"
+version = "0.1.0"
+edition = "2021"
+authors = [ "Grimmauld <grimmauld@grimmauld.de>" ]
+description = "Search for config files in XDG_CONFIG_DIRS"
+license-file = "LICENSE"
+
+[dependencies]
+serde = { version = "*", features = ["derive"] }
+serde_json = "*"
+clap = {version="4.5.4", features = ["derive"]}
+clap-stdin = "0.6.0"
+grep = "0.3.2"
+ignore = "0.4.23"
