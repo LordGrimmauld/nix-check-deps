@@ -59,7 +59,7 @@ $ nix-check-deps /nix/store/s1zd8bhnss7cvpz504pg9d4py168g46k-libvlc-3.0.21.drv
 - report unused
 
 Output of unused dependencies is unordered.
-This can be validated using `nix why-depends --precise`.
+Output can be validated using `nix why-depends --precise`.
 
 ## Current limitations & future plans
 Currently this tool can not differentiate between different outputs of dependencies. To still give good results, it checks all outputs of dependencies and accepts a dependency if any of its outputs are used.
