@@ -26,7 +26,11 @@
           src = ./.;
           cargoLock = {
             lockFile = ./Cargo.lock;
+            outputHashes = {
+              "nix-compat-0.1.0" = "";
+            };
           };
+
           
           # skips rebuilding the whole thing with debug info
           doCheck = false;
