@@ -14,3 +14,4 @@ clap-stdin = "0.6.0"
 grep = "0.3.2"
 ignore = "0.4.23"
 nix-compat = { git = "https://github.com/tvlfyi/tvix", version = "0.1.0" }
+regex = "1.11.1"

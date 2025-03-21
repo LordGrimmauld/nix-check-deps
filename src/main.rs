@@ -3,6 +3,7 @@ use crate::args::Cli;
 use clap::Parser;
 use ignore::Walk;
 use nix_compat::derivation::Derivation;
+use regex::Regex;
 use std::path::Path;
 
 use grep::{
@@ -32,6 +33,15 @@ fn read_deps_from_drv(drv_path: &str) -> HashMap<String, Vec<String>> {
 
     let mut dep_relations: HashMap<String, Vec<String>> = HashMap::new();
     let mut propagated: Vec<String> = Vec::new();
+    let check_inputs = drv
+        .environment
+        .get("checkInputs")
+        .map_or_else(Vec::new, |s| {
+            s.to_string()
+                .split_whitespace()
+                .map(str::to_owned)
+                .collect()
+        });
 
     let all_inputs = drv.input_derivations.keys();
     for input in all_inputs {
@@ -63,7 +73,9 @@ fn read_deps_from_drv(drv_path: &str) -> HashMap<String, Vec<String>> {
     }
 
     dep_relations.retain(|_, v| !propagated.iter().any(|p| v.contains(p)));
+    dep_relations.retain(|_, v| !check_inputs.iter().any(|p| v.contains(p)));
     // println!("dev inputs: {:?}", dev_inputs);
+    // println!("check inputs: {:?}", check_inputs);
     // println!("dep relations: {:?}", dep_relations);
     return dep_relations;
 }
@@ -75,7 +87,7 @@ fn read_deps_from_attr(attr: &str) -> HashMap<String, Vec<String>> {
         .arg(&attr)
         .arg("--apply")
         // .arg("p: let passthru = builtins.concatMap (dep: builtins.concatMap (dep: dep.all) dep.propagatedBuildInputs) p.buildInputs; in map (dep: [ \"${dep.out or dep}\" ]) (builtins.filter (dep: !(builtins.elem dep passthru)) p.buildInputs)") // TODO: figure out how to only scan the specific dep
-        .arg("p: let deps = builtins.map (dep: dep.all) p.buildInputs; passthru = builtins.concatMap (dep: builtins.concatMap (dep: dep.all) dep.propagatedBuildInputs) p.buildInputs; in builtins.map (builtins.filter (dep: ! (builtins.elem dep passthru) )) deps")
+        .arg("p: let deps = builtins.map (dep: dep.all) p.buildInputs; passthru = builtins.concatMap (dep: builtins.concatMap (dep: dep.all) dep.propagatedBuildInputs) p.buildInputs; in builtins.map (builtins.filter (dep: ! (builtins.elem dep passthru || builtins.elem dep p.checkInputs or []) )) deps")
         .arg("--json")
         // .arg("--impure")
         .stdout(Stdio::piped())
@@ -101,6 +113,18 @@ fn get_store_hash(store_path: &str) -> String {
 }
 
 fn main() {
+    let permitted_unused_deps = vec![
+        Regex::new("iconv-").unwrap(),
+        Regex::new("gtest-").unwrap(),
+        Regex::new("gbenchmark-").unwrap(),
+        Regex::new("-check-").unwrap(),
+        Regex::new("pytest-check-hook").unwrap(),
+        Regex::new("python3\\..*-mock-").unwrap(),
+        Regex::new("python3\\..*-pytest-").unwrap(),
+        Regex::new("perl-?5\\.").unwrap(),
+        Regex::new("unittest-check-hook").unwrap(),
+    ];
+
     let cli = Cli::parse();
     let attr: String = cli.attr.to_string();
 
@@ -133,6 +157,11 @@ fn main() {
     } else {
         read_deps_from_attr(&attr)
     };
+
+    dep_relations.retain(|_, v| {
+        !v.iter()
+            .any(|dep| permitted_unused_deps.iter().any(|re| re.is_match(dep)))
+    });
 
     let mut searcher = Searcher::new();
     searcher.set_binary_detection(BinaryDetection::none());
