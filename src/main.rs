@@ -204,7 +204,7 @@ fn main() {
             let mut searcher = Searcher::new();
             searcher.set_binary_detection(BinaryDetection::none());
             let header_include_regex_str =
-                r##"^#include (<|")(.*\/)*(.*\.q?h(pp?))(>|") *((\/\/.*)|(\/*))?\n?$"##;
+                r##"^#include (<|")(.*\/)*(.*\.q?h(pp)?)(>|") *((\/\/.*)|(\/*))?\n?$"##;
             let header_include_regex = Regex::new(header_include_regex_str).unwrap();
             let matcher = RegexMatcher::new(header_include_regex_str).unwrap();
             let mut used_headers: HashSet<String> = HashSet::new();
