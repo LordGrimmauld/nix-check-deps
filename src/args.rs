@@ -8,4 +8,8 @@ use clap_stdin::MaybeStdin;
 pub struct Cli {
     /// package to evaluate
     pub attr: MaybeStdin<String>,
+
+    /// whether to try and scan for c header files in use
+    #[arg(long, default_value_t = false)]
+    pub check_headers: bool,
 }
