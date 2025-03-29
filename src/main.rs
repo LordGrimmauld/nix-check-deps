@@ -226,7 +226,6 @@ fn main() {
                                 .unwrap()
                                 .as_str();
                             used_headers.insert(include_path.to_string());
-                            // println!("{}", include_path);
                             Ok(true) // stop reading the file
                         }),
                     )
@@ -250,15 +249,9 @@ fn main() {
                             .unwrap()
                             .to_string();
                         if used_headers.contains(&header) {
-                            println!("found matching header {} for pkg {}", header, dep_output);
+                            // println!("found matching header {} for pkg {}", header, dep_output);
                             return false;
                         }
-                        // if used_headers
-                        //     .iter()
-                        //     .any(|header| e.path().to_string_lossy().ends_with(header))
-                        // {
-                        //     return false;
-                        // }
                     }
                 }
                 return true;
