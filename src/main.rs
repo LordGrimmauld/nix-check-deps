@@ -32,7 +32,7 @@ struct DrvOutput {
 }
 
 impl DrvOutput {
-    fn path(self) -> String {
+    fn path(&self) -> String {
         self.path.clone()
     }
 }
@@ -61,16 +61,17 @@ impl DrvEnv {
         })
     }
 
-    #[allow(dead_code)]
     fn get_check_inputs(&self) -> Vec<String> {
-        self.build_inputs.as_ref().map_or_else(Vec::new, |s| {
+        self.check_inputs.as_ref().map_or_else(Vec::new, |s| {
             s.split_whitespace().map(str::to_owned).collect()
         })
     }
     fn get_propagated_build_inputs(&self) -> Vec<String> {
-        self.build_inputs.as_ref().map_or_else(Vec::new, |s| {
-            s.split_whitespace().map(str::to_owned).collect()
-        })
+        self.propagated_build_inputs
+            .as_ref()
+            .map_or_else(Vec::new, |s| {
+                s.split_whitespace().map(str::to_string).collect()
+            })
     }
 }
 
@@ -106,6 +107,32 @@ impl Derivation {
         })
     }
 
+    fn referrers(&self) -> Vec<String> {
+        // nix-store --query --referrers <path>
+        let drv_path = if self.drv_path.ends_with("^*") {
+            self.drv_path.trim_end_matches("^*")
+        } else {
+            &self.drv_path
+        };
+
+        let refs = Command::new("nix-store")
+            .arg("--query")
+            .arg("--referrers")
+            .arg(&drv_path)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .ok()
+            .and_then(|f| f.stdout)
+            .map_or_else(Vec::new, |out| {
+                BufReader::new(out)
+                    .lines()
+                    .filter_map(Result::ok) // Skip any lines that fail to parse
+                    .collect()
+            });
+        refs
+    }
+
     fn get_input_drv_paths(&self) -> Vec<String> {
         self.input_drvs.clone().into_keys().collect()
     }
@@ -126,18 +153,22 @@ impl Derivation {
         try_extract_source_archive(src_archive_path)
     }
 
+    fn get_out_paths(&self) -> Vec<String> {
+        self.outputs.values().map(DrvOutput::path).collect()
+    }
+
     fn read_deps(&self) -> HashMap<String, Vec<String>> {
         let dev_inputs: Vec<String> = self.env.get_build_inputs();
 
         let mut dep_relations: HashMap<String, Vec<String>> = HashMap::new();
         let mut propagated: Vec<String> = Vec::new();
-        let check_inputs = self.env.check_inputs.as_ref();
+        let check_inputs = self.env.get_check_inputs();
 
         let all_inputs = self.get_input_drv_paths();
         for dep_drv_path in all_inputs {
             let dep_drv = Derivation::read_drv(&dep_drv_path).unwrap();
             let propagated_drvs = dep_drv.env.get_propagated_build_inputs();
-            let outputs: Vec<String> = dep_drv.outputs.into_values().map(DrvOutput::path).collect();
+            let outputs: Vec<String> = dep_drv.get_out_paths();
 
             if outputs.iter().any(|o| dev_inputs.contains(o)) {
                 dep_relations.insert(dep_drv_path, outputs);
@@ -224,94 +255,116 @@ fn main() {
         eval_attr_to_drv_path(&attr).unwrap()
     };
 
-    // make sure the package exists in local store so it can be scanned
-    let pkg_outputs = build_drv(&attr).unwrap();
-
     let drv = Derivation::read_drv(&attr).unwrap();
 
-    let mut dep_relations = drv.read_deps();
-    // println!("{:?}", dep_relations);
+    let scan_roots: Vec<(Derivation, HashMap<String, Vec<String>>)> = if !cli.reverse {
+        let deps = drv.read_deps();
+        vec![(drv.clone(), deps)]
+    } else {
+        let search: HashMap<String, Vec<String>> =
+            HashMap::from([(drv.drv_path.clone(), drv.get_out_paths())]);
+        drv.referrers()
+            .iter()
+            .map(|r| (Derivation::read_drv(r).unwrap(), search.clone()))
+            .collect()
+    };
 
-    dep_relations.retain(|_, v| {
-        !v.iter()
-            .any(|dep| permitted_unused_deps.iter().any(|re| re.is_match(dep)))
-    });
+    for (root, mut dep_relations) in scan_roots {
+        // println!("rels {:?}", dep_relations);
+        println!("root {:?}", root.drv_path);
 
-    if cli.check_headers {
-        if let Some(src_dir) = drv.read_src_dir() {
-            let used_headers = find_used_c_headers(src_dir);
-            dep_relations.retain(|dep, dep_outputs| {
-                build_drv(dep).unwrap();
-                for dep_output in dep_outputs {
-                    for result in Walk::new(&dep_output) {
-                        let e = result.unwrap();
-                        let is_file = e.file_type().map_or(false, |f| f.is_file());
-                        if !is_file {
-                            continue;
-                        }
-                        let header = e
-                            .into_path()
-                            .file_name()
-                            .unwrap()
-                            .to_str()
-                            .unwrap()
-                            .to_string();
-                        if used_headers.contains(&header) {
-                            // println!("found matching header {} for pkg {}", header, dep_output);
-                            return false;
-                        }
-                    }
-                }
-                return true;
-            });
-        }
-    }
+        // make sure the package exists in local store so it can be scanned
+        let pkg_outputs = if let Some(pkg_outputs) = build_drv(&root.drv_path) {
+            pkg_outputs
+        } else {
+            println!(
+                "derivation {} does not build, skipping checks...",
+                root.drv_path
+            );
+            continue;
+        };
 
-    let mut searcher = Searcher::new();
-    searcher.set_binary_detection(BinaryDetection::none());
-    for output in pkg_outputs {
-        for result in Walk::new(&output) {
-            let e = result.unwrap();
-            let is_file = e.file_type().map_or(false, |f| f.is_file());
-            let is_link = e.file_type().map_or(false, |f| f.is_symlink());
+        dep_relations.retain(|_, v| {
+            !v.iter()
+                .any(|dep| permitted_unused_deps.iter().any(|re| re.is_match(dep)))
+        });
 
-            if is_file {
-                dep_relations.retain(|_, dep_drv| {
-                    let mut found = false;
-                    let regex: String = dep_drv
-                        .iter()
-                        .map(|dep| get_store_hash(dep))
-                        .collect::<Vec<String>>()
-                        .join("|");
-                    let matcher = RegexMatcher::new(&regex).unwrap();
-                    searcher
-                        .search_path(
-                            &matcher,
-                            e.path(),
-                            Bytes(|_, _| {
-                                found = true;
-                                Ok(false) // stop reading the file
-                            }),
-                        )
-                        .unwrap();
-                    return !found;
-                });
-            } else if is_link {
-                dep_relations.retain(|_, dep_drv| {
-                    let p = fs::read_link(e.path()).unwrap();
-                    for dep in dep_drv {
-                        if p.to_string_lossy().contains(&get_store_hash(dep)) {
-                            return false;
+        if cli.check_headers {
+            if let Some(src_dir) = drv.read_src_dir() {
+                let used_headers = find_used_c_headers(src_dir);
+                dep_relations.retain(|dep, dep_outputs| {
+                    build_drv(dep).unwrap();
+                    for dep_output in dep_outputs {
+                        for result in Walk::new(&dep_output) {
+                            let e = result.unwrap();
+                            let is_file = e.file_type().map_or(false, |f| f.is_file());
+                            if !is_file {
+                                continue;
+                            }
+                            let header = e
+                                .into_path()
+                                .file_name()
+                                .unwrap()
+                                .to_str()
+                                .unwrap()
+                                .to_string();
+                            if used_headers.contains(&header) {
+                                // println!("found matching header {} for pkg {}", header, dep_output);
+                                return false;
+                            }
                         }
                     }
-                    true
+                    return true;
                 });
             }
         }
-    }
 
-    for dep in dep_relations.keys() {
-        println!("{} has unused dependency: {}", attr, dep);
+        let mut searcher = Searcher::new();
+        searcher.set_binary_detection(BinaryDetection::none());
+        for output in pkg_outputs {
+            for result in Walk::new(&output) {
+                let e = result.unwrap();
+                let is_file = e.file_type().map_or(false, |f| f.is_file());
+                let is_link = e.file_type().map_or(false, |f| f.is_symlink());
+
+                if is_file {
+                    dep_relations.retain(|_, dep_drv| {
+                        let mut found = false;
+                        let regex: String = dep_drv
+                            .iter()
+                            .map(|dep| get_store_hash(dep))
+                            .collect::<Vec<String>>()
+                            .join("|");
+                        let matcher = RegexMatcher::new(&regex).unwrap();
+                        searcher
+                            .search_path(
+                                &matcher,
+                                e.path(),
+                                Bytes(|_, _| {
+                                    found = true;
+                                    Ok(false) // stop reading the file
+                                }),
+                            )
+                            .unwrap();
+                        return !found;
+                    });
+                } else if is_link {
+                    dep_relations.retain(|_, dep_drv| {
+                        let p = fs::read_link(e.path()).unwrap();
+                        for dep in dep_drv {
+                            if p.to_string_lossy().contains(&get_store_hash(dep)) {
+                                return false;
+                            }
+                        }
+                        true
+                    });
+                }
+            }
+        }
+
+        for dep in dep_relations.keys() {
+            println!("{} has unused dependency: {}", root.drv_path, dep);
+        }
     }
 }
 

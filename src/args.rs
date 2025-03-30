@@ -12,4 +12,8 @@ pub struct Cli {
     /// whether to try and scan for c header files in use
     #[arg(long, default_value_t = false)]
     pub check_headers: bool,
+
+    /// check whether library is unused
+    #[arg(long, default_value_t = false)]
+    pub reverse: bool,
 }

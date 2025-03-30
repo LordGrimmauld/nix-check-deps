@@ -26,9 +26,6 @@
           src = ./.;
           cargoLock = {
             lockFile = ./Cargo.lock;
-            outputHashes = {
-              "nix-compat-0.1.0" = "";
-            };
           };
 
           
@@ -47,6 +44,7 @@
             pkgs.rustfmt
             pkgs.clippy
             pkgs.flamegraph
+            pkgs.nix-eval-jobs
           ];
         };
       }
