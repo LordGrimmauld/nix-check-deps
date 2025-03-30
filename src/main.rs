@@ -39,12 +39,13 @@ fn read_src_from_drv(drv_path: &str) -> Option<PathBuf> {
         return Some(src_archive_path);
     }
 
-    println!("creating tmpdir to unpack...");
+    let prefix = format!("nix-check-extract-{}", get_store_hash(drv_path));
 
-    let tmp_dir = tempfile::Builder::new()
-        .prefix(&format!("nix-check-extract-{}", get_store_hash(drv_path)))
-        .tempdir()
-        .ok()?;
+    try_extract_source_archive(src_archive_path, prefix)
+}
+
+fn try_extract_source_archive(src_archive_path: PathBuf, prefix: String) -> Option<PathBuf> {
+    let tmp_dir = tempfile::Builder::new().prefix(&prefix).tempdir().ok()?;
 
     if src_archive_path.to_str()?.ends_with(".tar.gz") {
         let tar_gz = File::open(src_archive_path).ok()?;
@@ -61,7 +62,6 @@ fn read_src_from_drv(drv_path: &str) -> Option<PathBuf> {
     }
 
     println!("unknown archive format");
-    // unknown archive format
     None
 }
 
@@ -198,40 +198,7 @@ fn main() {
 
     if drv_logic && cli.check_headers {
         if let Some(src_dir) = read_src_from_drv(&attr) {
-            println!("{:?}", src_dir);
-
-            // find used headers
-            let mut searcher = Searcher::new();
-            searcher.set_binary_detection(BinaryDetection::none());
-            let header_include_regex_str =
-                r##"^#include (<|")(.*\/)*(.*\.q?h(pp)?)(>|") *((\/\/.*)|(\/*))?\n?$"##;
-            let header_include_regex = Regex::new(header_include_regex_str).unwrap();
-            let matcher = RegexMatcher::new(header_include_regex_str).unwrap();
-            let mut used_headers: HashSet<String> = HashSet::new();
-            for result in Walk::new(&src_dir) {
-                let e = result.unwrap();
-                let is_file = e.file_type().map_or(false, |f| f.is_file());
-                if !is_file {
-                    continue;
-                }
-                searcher
-                    .search_path(
-                        &matcher,
-                        e.path(),
-                        UTF8(|_, match_bytes| {
-                            let include_path = header_include_regex
-                                .captures(match_bytes)
-                                .unwrap()
-                                .get(3)
-                                .unwrap()
-                                .as_str();
-                            used_headers.insert(include_path.to_string());
-                            Ok(true) // stop reading the file
-                        }),
-                    )
-                    .unwrap();
-            }
-
+            let used_headers = find_used_c_headers(src_dir);
             dep_relations.retain(|dep, dep_outputs| {
                 build_drv(dep).unwrap();
                 for dep_output in dep_outputs {
@@ -305,6 +272,41 @@ fn main() {
     for dep in dep_relations.keys() {
         println!("{} has unused dependency: {}", attr, dep);
     }
+}
+
+fn find_used_c_headers(src_dir: PathBuf) -> HashSet<String> {
+    // find used headers
+    let mut searcher = Searcher::new();
+    searcher.set_binary_detection(BinaryDetection::none());
+    let header_include_regex_str =
+        r##"^#include (<|")(.*\/)*(.*\.q?h(pp)?)(>|") *((\/\/.*)|(\/*))?\n?$"##;
+    let header_include_regex = Regex::new(header_include_regex_str).unwrap();
+    let matcher = RegexMatcher::new(header_include_regex_str).unwrap();
+    let mut used_headers: HashSet<String> = HashSet::new();
+    for result in Walk::new(&src_dir) {
+        let e = result.unwrap();
+        let is_file = e.file_type().map_or(false, |f| f.is_file());
+        if !is_file {
+            continue;
+        }
+        searcher
+            .search_path(
+                &matcher,
+                e.path(),
+                UTF8(|_, match_bytes| {
+                    let include_path = header_include_regex
+                        .captures(match_bytes)
+                        .unwrap()
+                        .get(3)
+                        .unwrap()
+                        .as_str();
+                    used_headers.insert(include_path.to_string());
+                    Ok(true) // stop reading the file
+                }),
+            )
+            .unwrap();
+    }
+    used_headers
 }
 
 fn build_drv(build_path: &str) -> Option<Vec<String>> {
