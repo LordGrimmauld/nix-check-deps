@@ -271,7 +271,7 @@ fn main() {
 
     for (root, mut dep_relations) in scan_roots {
         // println!("rels {:?}", dep_relations);
-        println!("root {:?}", root.drv_path);
+        // println!("root {:?}", root.drv_path);
 
         // make sure the package exists in local store so it can be scanned
         let pkg_outputs = if let Some(pkg_outputs) = build_drv(&root.drv_path) {
@@ -290,31 +290,11 @@ fn main() {
         });
 
         if cli.check_headers {
-            if let Some(src_dir) = drv.read_src_dir() {
+            if let Some(src_dir) = root.read_src_dir() {
                 let used_headers = find_used_c_headers(src_dir);
                 dep_relations.retain(|dep, dep_outputs| {
                     build_drv(dep).unwrap();
-                    for dep_output in dep_outputs {
-                        for result in Walk::new(&dep_output) {
-                            let e = result.unwrap();
-                            let is_file = e.file_type().map_or(false, |f| f.is_file());
-                            if !is_file {
-                                continue;
-                            }
-                            let header = e
-                                .into_path()
-                                .file_name()
-                                .unwrap()
-                                .to_str()
-                                .unwrap()
-                                .to_string();
-                            if used_headers.contains(&header) {
-                                // println!("found matching header {} for pkg {}", header, dep_output);
-                                return false;
-                            }
-                        }
-                    }
-                    return true;
+                    !test_headers_of_package_used(&used_headers, dep_outputs)
                 });
             }
         }
@@ -366,6 +346,33 @@ fn main() {
             println!("{} has unused dependency: {}", root.drv_path, dep);
         }
     }
+}
+
+fn test_headers_of_package_used(
+    used_headers: &HashSet<String>,
+    dep_outputs: &mut Vec<String>,
+) -> bool {
+    for dep_output in dep_outputs {
+        for result in Walk::new(&dep_output) {
+            let e = result.unwrap();
+            let is_file = e.file_type().map_or(false, |f| f.is_file());
+            if !is_file {
+                continue;
+            }
+            let header = e
+                .into_path()
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_string();
+            if used_headers.contains(&header) {
+                // println!("found matching header {} for pkg {}", header, dep_output);
+                return true;
+            }
+        }
+    }
+    false
 }
 
 fn find_used_c_headers(src_dir: PathBuf) -> HashSet<String> {
