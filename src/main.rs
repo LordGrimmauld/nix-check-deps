@@ -127,29 +127,21 @@ fn read_deps_from_drv(drv_path: &str) -> HashMap<String, Vec<String>> {
     return dep_relations;
 }
 
-fn read_deps_from_attr(attr: &str) -> HashMap<String, Vec<String>> {
-    // get listed dependencies
+// nix eval nixpkgs#kdePackages.qttranslations --apply 'attr: attr.drvPath' --json
+
+fn eval_attr_to_drv(attr: &str) -> Option<String> {
     let output = Command::new("nix")
         .arg("eval")
         .arg(&attr)
         .arg("--apply")
-        // .arg("p: let passthru = builtins.concatMap (dep: builtins.concatMap (dep: dep.all) dep.propagatedBuildInputs) p.buildInputs; in map (dep: [ \"${dep.out or dep}\" ]) (builtins.filter (dep: !(builtins.elem dep passthru)) p.buildInputs)") // TODO: figure out how to only scan the specific dep
-        .arg("p: let deps = builtins.map (dep: dep.all) p.buildInputs; passthru = builtins.concatMap (dep: builtins.concatMap (dep: dep.all) dep.propagatedBuildInputs) p.buildInputs; in builtins.map (builtins.filter (dep: ! (builtins.elem dep passthru || builtins.elem dep p.checkInputs or []) )) deps")
+        .arg("attr: attr.drvPath")
         .arg("--json")
         // .arg("--impure")
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .spawn()
-        .unwrap();
-
-    let deps: Vec<Vec<String>> = serde_json::from_reader(output.stdout.unwrap()).unwrap();
-    let mut dep_relations: HashMap<String, Vec<String>> = HashMap::new();
-    for dep in deps {
-        if let Some(example) = dep.get(0) {
-            dep_relations.insert(example.clone(), dep);
-        }
-    }
-    return dep_relations;
+        .ok()?;
+    serde_json::from_reader(output.stdout?).ok()
 }
 
 fn get_store_hash(store_path: &str) -> String {
@@ -176,27 +168,23 @@ fn main() {
     let attr: String = cli.attr.to_string();
 
     let drv_logic = attr.ends_with(".drv") && Path::new(&attr).exists();
-    let build_path = if drv_logic {
-        format!("{}^*", &attr)
+    let attr = if drv_logic {
+        attr
     } else {
-        attr.clone()
+        eval_attr_to_drv(&attr).unwrap()
     };
 
-    // make sure the package exists, so it can be scanned
-    let pkg_outputs = build_drv(&build_path).unwrap();
+    // make sure the package exists in local store so it can be scanned
+    let pkg_outputs = build_drv(&attr).unwrap();
 
-    let mut dep_relations = if drv_logic {
-        read_deps_from_drv(&attr)
-    } else {
-        read_deps_from_attr(&attr)
-    };
+    let mut dep_relations = read_deps_from_drv(&attr);
 
     dep_relations.retain(|_, v| {
         !v.iter()
             .any(|dep| permitted_unused_deps.iter().any(|re| re.is_match(dep)))
     });
 
-    if drv_logic && cli.check_headers {
+    if cli.check_headers {
         if let Some(src_dir) = read_src_from_drv(&attr) {
             let used_headers = find_used_c_headers(src_dir);
             dep_relations.retain(|dep, dep_outputs| {
