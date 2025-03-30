@@ -3,8 +3,9 @@ use crate::args::Cli;
 use clap::Parser;
 use flate2::read::GzDecoder;
 use ignore::Walk;
-use nix_compat::derivation::Derivation;
+// use nix_compat::derivation::Derivation;
 use regex::Regex;
+use serde::Deserialize;
 use std::{
     collections::HashSet,
     fs::File,
@@ -25,26 +26,140 @@ use std::{
     process::{Command, Stdio},
 };
 
-fn read_src_from_drv(drv_path: &str) -> Option<PathBuf> {
-    let drv = Derivation::from_aterm_bytes(&fs::read(drv_path).ok()?).ok()?;
-    let src_drv = drv.environment.get("src")?.to_string();
-    // TODO: maybe integrate with https://github.com/milahu/nix-build-debug or similar
-
-    let build_results = build_drv(&src_drv)?;
-    let src_archive_path = PathBuf::from(build_results.get(0)?);
-    if !src_archive_path.exists() {
-        return None;
-    }
-    if src_archive_path.is_dir() {
-        return Some(src_archive_path);
-    }
-
-    let prefix = format!("nix-check-extract-{}", get_store_hash(drv_path));
-
-    try_extract_source_archive(src_archive_path, prefix)
+#[derive(Deserialize, Hash, Eq, PartialEq, Debug, Clone)]
+struct DrvOutput {
+    path: String,
 }
 
-fn try_extract_source_archive(src_archive_path: PathBuf, prefix: String) -> Option<PathBuf> {
+impl DrvOutput {
+    fn path(self) -> String {
+        self.path.clone()
+    }
+}
+
+#[derive(Deserialize, Hash, Eq, PartialEq, Debug, Clone)]
+struct DrvInput {
+    outputs: Vec<String>,
+}
+
+#[derive(Deserialize, Hash, Eq, PartialEq, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+struct DrvEnv {
+    #[serde(default)]
+    build_inputs: Option<String>,
+    #[serde(default)]
+    check_inputs: Option<String>,
+    #[serde(default)]
+    propagated_build_inputs: Option<String>,
+    src: Option<String>,
+}
+
+impl DrvEnv {
+    fn get_build_inputs(&self) -> Vec<String> {
+        self.build_inputs.as_ref().map_or_else(Vec::new, |s| {
+            s.split_whitespace().map(str::to_owned).collect()
+        })
+    }
+
+    #[allow(dead_code)]
+    fn get_check_inputs(&self) -> Vec<String> {
+        self.build_inputs.as_ref().map_or_else(Vec::new, |s| {
+            s.split_whitespace().map(str::to_owned).collect()
+        })
+    }
+    fn get_propagated_build_inputs(&self) -> Vec<String> {
+        self.build_inputs.as_ref().map_or_else(Vec::new, |s| {
+            s.split_whitespace().map(str::to_owned).collect()
+        })
+    }
+}
+
+#[derive(Deserialize, Eq, PartialEq, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+struct Derivation {
+    env: DrvEnv,
+    outputs: HashMap<String, DrvOutput>,
+    input_drvs: HashMap<String, DrvInput>,
+    #[serde(skip_deserializing)]
+    drv_path: String,
+}
+
+impl Derivation {
+    fn read_drv(drv_path: &str) -> Option<Self> {
+        let drv_path = if drv_path.ends_with(".drv") {
+            &format!("{}^*", drv_path)
+        } else {
+            drv_path
+        };
+        let output = Command::new("nix")
+            .arg("derivation")
+            .arg("show")
+            .arg(&drv_path)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .ok()?;
+        let drvs: HashMap<String, Derivation> = serde_json::from_reader(output.stdout?).unwrap(); // .ok()?; // FIXME ?
+        drvs.into_iter().last().map(|(path, mut drv)| {
+            drv.drv_path = path.to_owned();
+            drv
+        })
+    }
+
+    fn get_input_drv_paths(&self) -> Vec<String> {
+        self.input_drvs.clone().into_keys().collect()
+    }
+
+    fn read_src_dir(&self) -> Option<PathBuf> {
+        let src_drv = self.env.src.as_ref()?;
+        // TODO: maybe integrate with https://github.com/milahu/nix-build-debug or similar
+
+        let build_results = build_drv(&src_drv)?;
+        let src_archive_path = PathBuf::from(build_results.get(0)?);
+        if !src_archive_path.exists() {
+            return None;
+        }
+        if src_archive_path.is_dir() {
+            return Some(src_archive_path);
+        }
+
+        try_extract_source_archive(src_archive_path)
+    }
+
+    fn read_deps(&self) -> HashMap<String, Vec<String>> {
+        let dev_inputs: Vec<String> = self.env.get_build_inputs();
+
+        let mut dep_relations: HashMap<String, Vec<String>> = HashMap::new();
+        let mut propagated: Vec<String> = Vec::new();
+        let check_inputs = self.env.check_inputs.as_ref();
+
+        let all_inputs = self.get_input_drv_paths();
+        for dep_drv_path in all_inputs {
+            let dep_drv = Derivation::read_drv(&dep_drv_path).unwrap();
+            let propagated_drvs = dep_drv.env.get_propagated_build_inputs();
+            let outputs: Vec<String> = dep_drv.outputs.into_values().map(DrvOutput::path).collect();
+
+            if outputs.iter().any(|o| dev_inputs.contains(o)) {
+                dep_relations.insert(dep_drv_path, outputs);
+            }
+            propagated.append(&mut propagated_drvs.clone());
+
+            // println!("drv input: {:?}", dep_drv_path);
+            // println!("outputs: {:?}", outputs);
+            // println!("propagated: {:?}", propagated_drvs);
+        }
+
+        dep_relations.retain(|_, v| !propagated.iter().any(|p| v.contains(p)));
+        dep_relations.retain(|_, v| !check_inputs.iter().any(|p| v.contains(p)));
+        // println!("dev inputs: {:?}", dev_inputs);
+        // println!("check inputs: {:?}", check_inputs);
+        // println!("dep relations: {:?}", dep_relations);
+        return dep_relations;
+    }
+}
+
+fn try_extract_source_archive(src_archive_path: PathBuf) -> Option<PathBuf> {
+    let prefix = "nix-check-extract";
     let tmp_dir = tempfile::Builder::new().prefix(&prefix).tempdir().ok()?;
 
     if src_archive_path.to_str()?.ends_with(".tar.gz") {
@@ -65,78 +180,13 @@ fn try_extract_source_archive(src_archive_path: PathBuf, prefix: String) -> Opti
     None
 }
 
-fn read_deps_from_drv(drv_path: &str) -> HashMap<String, Vec<String>> {
-    let drv = Derivation::from_aterm_bytes(&fs::read(drv_path).unwrap()).unwrap();
-
-    let dev_inputs: Vec<String> = drv
-        .environment
-        .get("buildInputs")
-        .map_or_else(Vec::new, |s| {
-            s.to_string()
-                .split_whitespace()
-                .map(str::to_owned)
-                .collect()
-        });
-
-    let mut dep_relations: HashMap<String, Vec<String>> = HashMap::new();
-    let mut propagated: Vec<String> = Vec::new();
-    let check_inputs = drv
-        .environment
-        .get("checkInputs")
-        .map_or_else(Vec::new, |s| {
-            s.to_string()
-                .split_whitespace()
-                .map(str::to_owned)
-                .collect()
-        });
-
-    let all_inputs = drv.input_derivations.keys();
-    for input in all_inputs {
-        let dep_drv_path = input.to_absolute_path();
-        let dep_drv = Derivation::from_aterm_bytes(&fs::read(&dep_drv_path).unwrap()).unwrap();
-        let mut propagated_drvs = dep_drv
-            .environment
-            .get("propagatedBuildInputs")
-            .map_or_else(Vec::new, |s| {
-                s.to_string()
-                    .split_whitespace()
-                    .map(str::to_owned)
-                    .collect()
-            });
-        propagated.append(&mut propagated_drvs);
-        let outputs: Vec<String> = dep_drv
-            .outputs
-            .values()
-            .map(|o| o.path.as_ref().unwrap().to_absolute_path())
-            .collect();
-
-        // println!("drv input: {:?}", dep_drv_path);
-        // println!("outputs: {:?}", outputs);
-        // println!("propagated: {:?}", propagated_drvs);
-
-        if outputs.iter().any(|o| dev_inputs.contains(o)) {
-            dep_relations.insert(dep_drv_path, outputs);
-        }
-    }
-
-    dep_relations.retain(|_, v| !propagated.iter().any(|p| v.contains(p)));
-    dep_relations.retain(|_, v| !check_inputs.iter().any(|p| v.contains(p)));
-    // println!("dev inputs: {:?}", dev_inputs);
-    // println!("check inputs: {:?}", check_inputs);
-    // println!("dep relations: {:?}", dep_relations);
-    return dep_relations;
-}
-
-// nix eval nixpkgs#kdePackages.qttranslations --apply 'attr: attr.drvPath' --json
-
-fn eval_attr_to_drv(attr: &str) -> Option<String> {
+fn eval_attr_to_drv_path(attr: &str) -> Option<String> {
     let output = Command::new("nix")
         .arg("eval")
         .arg(&attr)
         .arg("--apply")
         .arg("attr: attr.drvPath")
         .arg("--json")
-        // .arg("--impure")
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .spawn()
@@ -171,13 +221,16 @@ fn main() {
     let attr = if drv_logic {
         attr
     } else {
-        eval_attr_to_drv(&attr).unwrap()
+        eval_attr_to_drv_path(&attr).unwrap()
     };
 
     // make sure the package exists in local store so it can be scanned
     let pkg_outputs = build_drv(&attr).unwrap();
 
-    let mut dep_relations = read_deps_from_drv(&attr);
+    let drv = Derivation::read_drv(&attr).unwrap();
+
+    let mut dep_relations = drv.read_deps();
+    // println!("{:?}", dep_relations);
 
     dep_relations.retain(|_, v| {
         !v.iter()
@@ -185,7 +238,7 @@ fn main() {
     });
 
     if cli.check_headers {
-        if let Some(src_dir) = read_src_from_drv(&attr) {
+        if let Some(src_dir) = drv.read_src_dir() {
             let used_headers = find_used_c_headers(src_dir);
             dep_relations.retain(|dep, dep_outputs| {
                 build_drv(dep).unwrap();
