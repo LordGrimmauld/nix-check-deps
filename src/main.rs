@@ -1,5 +1,6 @@
 mod args;
 use crate::args::Cli;
+use bzip2::read::BzDecoder;
 use clap::Parser;
 use flate2::read::GzDecoder;
 use ignore::Walk;
@@ -205,6 +206,18 @@ fn try_extract_source_archive(src_archive_path: PathBuf) -> Option<PathBuf> {
         let mut archive = Archive::new(tar);
         archive.unpack(&tmp_dir).ok()?;
         return Some(tmp_dir.into_path());
+    } else if src_archive_path.to_str()?.ends_with(".tar.bz2") {
+        let tar_bz2 = File::open(src_archive_path).ok()?;
+        let tar = BzDecoder::new(tar_bz2);
+        let mut archive = Archive::new(tar);
+        archive.unpack(&tmp_dir).ok()?;
+        return Some(tmp_dir.into_path());
+        // } else if src_archive_path.to_str()?.ends_with(".tar.lz") {
+        //     let tar_lz = File::open(src_archive_path).ok()?;
+        //     let tar = LzDecoder::new(tar_lz);
+        //     let mut archive = Archive::new(tar);
+        //     archive.unpack(&tmp_dir).ok()?;
+        //     return Some(tmp_dir.into_path());
     }
 
     println!(
