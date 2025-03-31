@@ -253,12 +253,11 @@ fn main() {
         Regex::new("iconv-").unwrap(),
         Regex::new("gtest-").unwrap(),
         Regex::new("gbenchmark-").unwrap(),
-        Regex::new("-check-").unwrap(),
-        Regex::new("pytest-check-hook").unwrap(),
         Regex::new("python3\\..*-mock-").unwrap(),
         Regex::new("python3\\..*-pytest-").unwrap(),
         Regex::new("perl-?5\\.").unwrap(),
-        Regex::new("unittest-check-hook").unwrap(),
+        Regex::new("-check-").unwrap(),
+        Regex::new(r"-hook(\.drv(\^\**)?)?$").unwrap(),
     ];
 
     let cli = Cli::parse();
