@@ -207,7 +207,10 @@ fn try_extract_source_archive(src_archive_path: PathBuf) -> Option<PathBuf> {
         return Some(tmp_dir.into_path());
     }
 
-    println!("unknown archive format");
+    println!(
+        "unknown archive format for object: {}",
+        src_archive_path.to_string_lossy()
+    );
     None
 }
 
@@ -420,6 +423,7 @@ fn build_drv(build_path: &str) -> Option<Vec<String>> {
         .arg("build")
         .arg(build_path)
         .arg("--print-out-paths")
+        .arg("--no-link")
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .spawn()
