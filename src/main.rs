@@ -194,7 +194,9 @@ fn try_extract_source_archive(src_archive_path: PathBuf) -> Option<PathBuf> {
     let prefix = "nix-check-extract";
     let tmp_dir = tempfile::Builder::new().prefix(&prefix).tempdir().ok()?;
 
-    if src_archive_path.to_str()?.ends_with(".tar.gz") {
+    if src_archive_path.to_str()?.ends_with(".tar.gz")
+        || src_archive_path.to_str()?.ends_with(".tgz")
+    {
         let tar_gz = File::open(src_archive_path).ok()?;
         let tar = GzDecoder::new(tar_gz);
         let mut archive = Archive::new(tar);
