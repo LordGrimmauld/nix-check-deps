@@ -13,6 +13,7 @@ use std::{
     path::{Path, PathBuf},
 };
 use tar::Archive;
+use tempfile::TempDir;
 use xz::read::XzDecoder;
 
 use grep::{
@@ -76,7 +77,7 @@ impl DrvEnv {
     }
 }
 
-#[derive(Deserialize, Eq, PartialEq, Debug, Clone)]
+#[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 struct Derivation {
     env: DrvEnv,
@@ -84,6 +85,8 @@ struct Derivation {
     input_drvs: HashMap<String, DrvInput>,
     #[serde(skip_deserializing)]
     drv_path: String,
+    #[serde(skip_deserializing)]
+    extracted_src_archive: Option<TempDir>,
 }
 
 impl Derivation {
@@ -138,7 +141,7 @@ impl Derivation {
         self.input_drvs.clone().into_keys().collect()
     }
 
-    fn read_src_dir(&self) -> Option<PathBuf> {
+    fn read_src_dir(&mut self) -> Option<PathBuf> {
         let src_drv = self.env.src.as_ref()?;
         // TODO: maybe integrate with https://github.com/milahu/nix-build-debug or similar
 
@@ -151,7 +154,13 @@ impl Derivation {
             return Some(src_archive_path);
         }
 
-        try_extract_source_archive(src_archive_path)
+        if self.extracted_src_archive.is_none() {
+            self.extracted_src_archive = try_extract_source_archive(src_archive_path);
+        }
+
+        self.extracted_src_archive
+            .as_ref()
+            .map(|p| p.path().to_path_buf())
     }
 
     fn get_out_paths(&self) -> Vec<String> {
@@ -190,7 +199,7 @@ impl Derivation {
     }
 }
 
-fn try_extract_source_archive(src_archive_path: PathBuf) -> Option<PathBuf> {
+fn try_extract_source_archive(src_archive_path: PathBuf) -> Option<TempDir> {
     let prefix = "nix-check-extract";
     let tmp_dir = tempfile::Builder::new().prefix(&prefix).tempdir().ok()?;
 
@@ -201,19 +210,19 @@ fn try_extract_source_archive(src_archive_path: PathBuf) -> Option<PathBuf> {
         let tar = GzDecoder::new(tar_gz);
         let mut archive = Archive::new(tar);
         archive.unpack(&tmp_dir).ok()?;
-        return Some(tmp_dir.into_path());
+        return Some(tmp_dir);
     } else if src_archive_path.to_str()?.ends_with(".tar.xz") {
         let tar_xz = File::open(src_archive_path).ok()?;
         let tar = XzDecoder::new(tar_xz);
         let mut archive = Archive::new(tar);
         archive.unpack(&tmp_dir).ok()?;
-        return Some(tmp_dir.into_path());
+        return Some(tmp_dir);
     } else if src_archive_path.to_str()?.ends_with(".tar.bz2") {
         let tar_bz2 = File::open(src_archive_path).ok()?;
         let tar = BzDecoder::new(tar_bz2);
         let mut archive = Archive::new(tar);
         archive.unpack(&tmp_dir).ok()?;
-        return Some(tmp_dir.into_path());
+        return Some(tmp_dir);
         // } else if src_archive_path.to_str()?.ends_with(".tar.lz") {
         //     let tar_lz = File::open(src_archive_path).ok()?;
         //     let tar = LzDecoder::new(tar_lz);
@@ -276,7 +285,7 @@ fn main() {
 
     let scan_roots: Vec<(Derivation, HashMap<String, Vec<String>>)> = if !cli.reverse {
         let deps = drv.read_deps();
-        vec![(drv.clone(), deps)]
+        vec![(drv, deps)]
     } else {
         let search: HashMap<String, Vec<String>> =
             HashMap::from([(drv.drv_path.clone(), drv.get_out_paths())]);
@@ -286,7 +295,7 @@ fn main() {
             .collect()
     };
 
-    for (root, mut dep_relations) in scan_roots {
+    for (mut root, mut dep_relations) in scan_roots {
         // println!("rels {:?}", dep_relations);
         // println!("root {:?}", root.drv_path);
 
