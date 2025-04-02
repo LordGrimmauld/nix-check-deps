@@ -13,6 +13,14 @@ pub struct Cli {
     #[arg(long, default_value_t = false)]
     pub check_headers: bool,
 
+    /// output used C/C++ headers
+    #[arg(long, default_value_t = false)]
+    pub list_used_headers: bool,
+
+    /// skips check of dependencies in use
+    #[arg(long, default_value_t = false)]
+    pub skip_dep_usage_check: bool,
+
     /// check whether library is unused
     #[arg(long, default_value_t = false)]
     pub reverse: bool,

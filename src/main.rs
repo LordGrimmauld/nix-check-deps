@@ -315,14 +315,23 @@ fn main() {
                 .any(|dep| permitted_unused_deps.iter().any(|re| re.is_match(dep)))
         });
 
-        if cli.check_headers {
+        if cli.check_headers || cli.list_used_headers {
             if let Some(src_dir) = root.read_src_dir() {
                 let used_headers = find_used_c_headers(src_dir);
                 dep_relations.retain(|dep, dep_outputs| {
                     build_drv(dep).unwrap();
                     !test_headers_of_package_used(&used_headers, dep_outputs)
                 });
+                if cli.list_used_headers {
+                    for header in used_headers {
+                        println!("{} uses header: {}", root.drv_path, header);
+                    }
+                }
             }
+        }
+
+        if cli.skip_dep_usage_check {
+            continue;
         }
 
         let mut searcher = Searcher::new();
