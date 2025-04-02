@@ -318,17 +318,6 @@ fn main() {
             // println!("rels {:?}", dep_relations);
             // println!("root {:?}", root.drv_path);
 
-            // make sure the package exists in local store so it can be scanned
-            let pkg_outputs = if let Some(pkg_outputs) = build_drv(&root.drv_path) {
-                pkg_outputs
-            } else {
-                println!(
-                    "derivation {} does not build, skipping checks...",
-                    root.drv_path
-                );
-                return;
-            };
-
             dep_relations.retain(|_, v| {
                 !v.iter()
                     .any(|dep| permitted_unused_deps.iter().any(|re| re.is_match(dep)))
@@ -352,6 +341,17 @@ fn main() {
             if cli.skip_dep_usage_check {
                 return;
             }
+
+            // make sure the package exists in local store so it can be scanned
+            let pkg_outputs = if let Some(pkg_outputs) = build_drv(&root.drv_path) {
+                pkg_outputs
+            } else {
+                println!(
+                    "derivation {} does not build, skipping checks...",
+                    root.drv_path
+                );
+                return;
+            };
 
             let mut searcher = Searcher::new();
             searcher.set_binary_detection(BinaryDetection::none());
