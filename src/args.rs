@@ -24,4 +24,8 @@ pub struct Cli {
     /// check whether library is unused
     #[arg(long, default_value_t = false)]
     pub reverse: bool,
+
+    /// number of packages to check at once
+    #[arg(long, short, default_value_t = 1)]
+    pub jobs: usize,
 }
