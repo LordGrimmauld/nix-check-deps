@@ -25,6 +25,10 @@ pub struct Cli {
     #[arg(long, default_value_t = false)]
     pub reverse: bool,
 
+    /// drv names to skip
+    #[arg(long, default_value_t = String::from(""))]
+    pub skip: String,
+
     /// number of packages to check at once
     #[arg(long, short, default_value_t = 1)]
     pub jobs: usize,

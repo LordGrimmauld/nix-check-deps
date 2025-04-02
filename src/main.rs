@@ -53,6 +53,8 @@ struct DrvEnv {
     #[serde(default)]
     check_inputs: Option<String>,
     #[serde(default)]
+    pname: Option<String>,
+    #[serde(default)]
     propagated_build_inputs: Option<String>,
     src: Option<String>,
 }
@@ -198,6 +200,10 @@ impl Derivation {
         // println!("dep relations: {:?}", dep_relations);
         return dep_relations;
     }
+
+    fn matches_pname(&self, pname: &str) -> bool {
+        self.env.pname.as_ref().map_or(false, |p| p == pname)
+    }
 }
 
 fn try_extract_source_archive(src_archive_path: PathBuf) -> Option<TempDir> {
@@ -301,8 +307,14 @@ fn main() {
         .build()
         .unwrap();
 
+    let skipped: Vec<String> = cli.skip.split(",").map(str::to_owned).collect();
+
     pool.install(|| {
         scan_roots.iter_mut().for_each(|(root, dep_relations)| {
+            if skipped.iter().any(|s| root.matches_pname(s)) {
+                return;
+            }
+
             // println!("rels {:?}", dep_relations);
             // println!("root {:?}", root.drv_path);
 
