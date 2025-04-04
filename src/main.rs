@@ -81,16 +81,14 @@ fn main() {
             });
 
             if cli.check_headers || cli.list_used_headers {
-                if let Some(src_dir) = root.read_src_dir() {
-                    let used_headers = derivation::find_used_c_headers(src_dir);
-                    dep_relations.retain(|dep, dep_outputs| {
-                        derivation::build_drv(dep).unwrap();
-                        !derivation::test_headers_of_package_used(&used_headers, dep_outputs)
-                    });
-                    if cli.list_used_headers {
-                        for header in used_headers {
-                            println!("{} uses header: {}", root.drv_path, header);
-                        }
+                let used_headers = root.find_used_c_headers();
+                dep_relations.retain(|dep, dep_outputs| {
+                    derivation::build_drv(dep).unwrap();
+                    !derivation::test_headers_of_package_used(&used_headers, dep_outputs)
+                });
+                if cli.list_used_headers {
+                    for header in used_headers {
+                        println!("{} uses header: {}", root.drv_path, header);
                     }
                 }
             }

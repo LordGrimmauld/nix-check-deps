@@ -195,6 +195,45 @@ impl Derivation {
     pub fn matches_pname(&self, pname: &str) -> bool {
         self.env.pname.as_ref().map_or(false, |p| p == pname)
     }
+
+    pub fn find_used_c_headers(&mut self) -> HashSet<String> {
+        if let Some(src_dir) = self.read_src_dir() {
+            // find used headers
+            let mut searcher = Searcher::new();
+            searcher.set_binary_detection(BinaryDetection::none());
+            let header_include_regex_str =
+                r##"^#include (<|")(.*\/)*(.*\.q?h(pp)?)(>|") *((\/\/.*)|(\/*))?\n?$"##;
+            let header_include_regex = Regex::new(header_include_regex_str).unwrap();
+            let matcher = RegexMatcher::new(header_include_regex_str).unwrap();
+            let mut used_headers: HashSet<String> = HashSet::new();
+            for result in Walk::new(&src_dir) {
+                let e = result.unwrap();
+                let is_file = e.file_type().map_or(false, |f| f.is_file());
+                if !is_file {
+                    continue;
+                }
+                searcher
+                    .search_path(
+                        &matcher,
+                        e.path(),
+                        UTF8(|_, match_bytes| {
+                            let include_path = header_include_regex
+                                .captures(match_bytes)
+                                .unwrap()
+                                .get(3)
+                                .unwrap()
+                                .as_str();
+                            used_headers.insert(include_path.to_string());
+                            Ok(true) // continue reading the file
+                        }),
+                    )
+                    .unwrap();
+            }
+            used_headers
+        } else {
+            HashSet::new()
+        }
+    }
 }
 
 fn try_extract_source_archive(src_archive_path: PathBuf) -> Option<TempDir> {
@@ -282,41 +321,6 @@ pub fn test_headers_of_package_used(
         }
     }
     false
-}
-
-pub fn find_used_c_headers(src_dir: PathBuf) -> HashSet<String> {
-    // find used headers
-    let mut searcher = Searcher::new();
-    searcher.set_binary_detection(BinaryDetection::none());
-    let header_include_regex_str =
-        r##"^#include (<|")(.*\/)*(.*\.q?h(pp)?)(>|") *((\/\/.*)|(\/*))?\n?$"##;
-    let header_include_regex = Regex::new(header_include_regex_str).unwrap();
-    let matcher = RegexMatcher::new(header_include_regex_str).unwrap();
-    let mut used_headers: HashSet<String> = HashSet::new();
-    for result in Walk::new(&src_dir) {
-        let e = result.unwrap();
-        let is_file = e.file_type().map_or(false, |f| f.is_file());
-        if !is_file {
-            continue;
-        }
-        searcher
-            .search_path(
-                &matcher,
-                e.path(),
-                UTF8(|_, match_bytes| {
-                    let include_path = header_include_regex
-                        .captures(match_bytes)
-                        .unwrap()
-                        .get(3)
-                        .unwrap()
-                        .as_str();
-                    used_headers.insert(include_path.to_string());
-                    Ok(true) // continue reading the file
-                }),
-            )
-            .unwrap();
-    }
-    used_headers
 }
 
 pub fn build_drv(build_path: &str) -> Option<Vec<String>> {
