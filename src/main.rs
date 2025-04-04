@@ -461,7 +461,7 @@ fn find_used_c_headers(src_dir: PathBuf) -> HashSet<String> {
                         .unwrap()
                         .as_str();
                     used_headers.insert(include_path.to_string());
-                    Ok(true) // stop reading the file
+                    Ok(true) // continue reading the file
                 }),
             )
             .unwrap();
