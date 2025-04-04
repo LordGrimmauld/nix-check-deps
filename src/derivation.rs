@@ -139,7 +139,7 @@ impl Derivation {
         let src_drv = self.env.src.as_ref()?;
         // TODO: maybe integrate with https://github.com/milahu/nix-build-debug or similar
 
-        let build_results = build_drv(&src_drv)?;
+        let build_results = build_drv_internal(&src_drv).ok()?;
         let src_archive_path = PathBuf::from(build_results.get(0)?);
         if !src_archive_path.exists() {
             return None;
@@ -241,6 +241,10 @@ impl Derivation {
         } else {
             HashSet::new()
         }
+    }
+
+    pub fn build(&self) -> Result<Vec<String>, std::io::Error> {
+        build_drv_internal(&self.drv_path)
     }
 }
 
@@ -359,7 +363,8 @@ pub fn test_headers_of_package_used(
     false
 }
 
-pub fn build_drv(build_path: &str) -> Option<Vec<String>> {
+// FIXME: this might still return Ok even if drv fails to actually build?
+fn build_drv_internal(build_path: &str) -> Result<Vec<String>, std::io::Error> {
     let build_path = if build_path.ends_with(".drv") {
         &format!("{}^*", build_path)
     } else {
@@ -372,14 +377,12 @@ pub fn build_drv(build_path: &str) -> Option<Vec<String>> {
         .arg("--no-link")
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
-        .spawn()
-        .ok()?
-        .stdout?;
+        .spawn()?
+        .stdout
+        .unwrap();
 
-    Some(
-        BufReader::new(pkg_outputs_raw)
-            .lines()
-            .collect::<Result<_, _>>()
-            .unwrap_or_else(|_| Vec::new()),
-    )
+    Ok(BufReader::new(pkg_outputs_raw)
+        .lines()
+        .collect::<Result<_, _>>()
+        .unwrap_or_else(|_| Vec::new()))
 }

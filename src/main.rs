@@ -88,7 +88,7 @@ fn main() {
             if cli.check_headers || cli.list_used_headers {
                 let used_headers = root.find_used_c_headers();
                 dep_relations.retain(|dep_drv| {
-                    derivation::build_drv(&dep_drv.drv_path).unwrap();
+                    dep_drv.build().unwrap();
                     !derivation::test_headers_of_package_used(
                         &used_headers,
                         &mut dep_drv.get_out_paths(),
@@ -106,7 +106,8 @@ fn main() {
             }
 
             // make sure the package exists in local store so it can be scanned
-            let pkg_outputs = if let Some(pkg_outputs) = derivation::build_drv(&root.drv_path) {
+            // FIXME: this might still return Ok even if drv fails to actually build?
+            let pkg_outputs = if let Ok(pkg_outputs) = root.build() {
                 pkg_outputs
             } else {
                 println!(
