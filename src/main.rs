@@ -7,17 +7,14 @@ use ignore::Walk;
 use rayon::ThreadPoolBuilder;
 // use nix_compat::derivation::Derivation;
 use regex::Regex;
-use std::path::Path;
+use std::{collections::HashSet, path::Path};
 
 use grep::{
     regex::RegexMatcher,
     searcher::{sinks::Bytes, BinaryDetection, Searcher},
 };
 
-use std::{
-    collections::HashMap,
-    fs::{self},
-};
+use std::fs::{self};
 
 fn main() {
     let permitted_unused_deps = vec![
@@ -47,15 +44,22 @@ fn main() {
 
     let drv = Derivation::read_drv(&attr).unwrap();
 
-    let mut scan_roots: Vec<(Derivation, HashMap<String, Vec<String>>)> = if !cli.reverse {
+    // (dependent, {dependency_name -> [outputs] } )
+    let mut scan_roots: Vec<(Derivation, HashSet<Derivation>)> = if !cli.reverse {
         let deps = drv.read_deps();
         vec![(drv, deps)]
     } else {
-        let search: HashMap<String, Vec<String>> =
-            HashMap::from([(drv.drv_path.clone(), drv.get_out_paths())]);
         drv.referrers()
             .iter()
-            .map(|r| (Derivation::read_drv(r).unwrap(), search.clone()))
+            .map(|r| {
+                (
+                    Derivation::read_drv(r).unwrap(),
+                    [drv.clone()]
+                        .iter()
+                        .cloned()
+                        .collect::<HashSet<Derivation>>(),
+                )
+            })
             .collect()
     };
 
@@ -75,16 +79,20 @@ fn main() {
             // println!("rels {:?}", dep_relations);
             // println!("root {:?}", root.drv_path);
 
-            dep_relations.retain(|_, v| {
-                !v.iter()
-                    .any(|dep| permitted_unused_deps.iter().any(|re| re.is_match(dep)))
+            dep_relations.retain(|dep_drv| {
+                !permitted_unused_deps
+                    .iter()
+                    .any(|re| re.is_match(&dep_drv.drv_path))
             });
 
             if cli.check_headers || cli.list_used_headers {
                 let used_headers = root.find_used_c_headers();
-                dep_relations.retain(|dep, dep_outputs| {
-                    derivation::build_drv(dep).unwrap();
-                    !derivation::test_headers_of_package_used(&used_headers, dep_outputs)
+                dep_relations.retain(|dep_drv| {
+                    derivation::build_drv(&dep_drv.drv_path).unwrap();
+                    !derivation::test_headers_of_package_used(
+                        &used_headers,
+                        &mut dep_drv.get_out_paths(),
+                    )
                 });
                 if cli.list_used_headers {
                     for header in used_headers {
@@ -117,9 +125,10 @@ fn main() {
                     let is_link = e.file_type().map_or(false, |f| f.is_symlink());
 
                     if is_file {
-                        dep_relations.retain(|_, dep_drv| {
+                        dep_relations.retain(|dep_drv| {
                             let mut found = false;
                             let regex: String = dep_drv
+                                .get_out_paths()
                                 .iter()
                                 .map(|dep| derivation::get_store_hash(dep))
                                 .collect::<Vec<String>>()
@@ -138,11 +147,11 @@ fn main() {
                             return !found;
                         });
                     } else if is_link {
-                        dep_relations.retain(|_, dep_drv| {
+                        dep_relations.retain(|dep_drv| {
                             let p = fs::read_link(e.path()).unwrap();
-                            for dep in dep_drv {
+                            for dep in dep_drv.get_out_paths() {
                                 if p.to_string_lossy()
-                                    .contains(&derivation::get_store_hash(dep))
+                                    .contains(&derivation::get_store_hash(&dep))
                                 {
                                     return false;
                                 }
@@ -153,8 +162,8 @@ fn main() {
                 }
             }
 
-            for dep in dep_relations.keys() {
-                println!("{} has unused dependency: {}", root.drv_path, dep);
+            for dep in dep_relations.iter() {
+                println!("{} has unused dependency: {}", root.drv_path, dep.drv_path);
             }
         });
     });

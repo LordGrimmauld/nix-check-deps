@@ -161,10 +161,10 @@ impl Derivation {
         self.outputs.values().map(DrvOutput::path).collect()
     }
 
-    pub fn read_deps(&self) -> HashMap<String, Vec<String>> {
+    pub fn read_deps(&self) -> HashSet<Derivation> {
         let dev_inputs: Vec<String> = self.env.get_build_inputs();
 
-        let mut dep_relations: HashMap<String, Vec<String>> = HashMap::new();
+        let mut dep_relations: HashSet<Derivation> = HashSet::new();
         let mut propagated: Vec<String> = Vec::new();
         let check_inputs = self.env.get_check_inputs();
 
@@ -175,7 +175,7 @@ impl Derivation {
             let outputs: Vec<String> = dep_drv.get_out_paths();
 
             if outputs.iter().any(|o| dev_inputs.contains(o)) {
-                dep_relations.insert(dep_drv_path, outputs);
+                dep_relations.insert(dep_drv);
             }
             propagated.append(&mut propagated_drvs.clone());
 
@@ -184,8 +184,16 @@ impl Derivation {
             // println!("propagated: {:?}", propagated_drvs);
         }
 
-        dep_relations.retain(|_, v| !propagated.iter().any(|p| v.contains(p)));
-        dep_relations.retain(|_, v| !check_inputs.iter().any(|p| v.contains(p)));
+        dep_relations.retain(|dep_drv| {
+            !propagated
+                .iter()
+                .any(|p| dep_drv.get_out_paths().contains(p))
+        });
+        dep_relations.retain(|dep_drv| {
+            !check_inputs
+                .iter()
+                .any(|p| dep_drv.get_out_paths().contains(p))
+        });
         // println!("dev inputs: {:?}", dev_inputs);
         // println!("check inputs: {:?}", check_inputs);
         // println!("dep relations: {:?}", dep_relations);
@@ -235,6 +243,34 @@ impl Derivation {
         }
     }
 }
+
+impl Clone for Derivation {
+    fn clone(&self) -> Self {
+        Derivation {
+            env: self.env.clone(),
+            outputs: self.outputs.clone(),
+            input_drvs: self.input_drvs.clone(),
+            drv_path: self.drv_path.clone(),
+            extracted_src_archive: None,
+        }
+    }
+}
+
+impl PartialEq for Derivation {
+    fn eq(&self, other: &Self) -> bool {
+        self.drv_path == other.drv_path
+    }
+}
+
+impl Eq for Derivation {}
+
+impl std::hash::Hash for Derivation {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.drv_path.hash(state);
+    }
+}
+
+// impl Hash for Derivation {}
 
 fn try_extract_source_archive(src_archive_path: PathBuf) -> Option<TempDir> {
     let prefix = "nix-check-extract";
