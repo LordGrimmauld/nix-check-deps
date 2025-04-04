@@ -9,6 +9,7 @@ use std::{
     collections::HashSet,
     fs::{self, File},
     path::PathBuf,
+    str::FromStr,
 };
 use tar::Archive;
 use tempfile::TempDir;
@@ -248,6 +249,36 @@ impl Derivation {
         return HashSet::new();
     }
 
+    pub fn find_used_shebangs(&mut self) -> HashSet<String> {
+        let src_dir = if let Some(src_dir) = self.read_src_dir() {
+            src_dir
+        } else {
+            return HashSet::new();
+        };
+
+        let mut shebangs = HashSet::new();
+        let shebang_regex_str = r"^#! *\/((nix\/store\/.*\/)?(usr\/)?)bin\/((env +)?([^\s]+))";
+        let shebang_regex = Regex::new(shebang_regex_str).unwrap();
+        for result in Walk::new(&src_dir) {
+            let e = result.unwrap();
+            let is_file = e.file_type().map_or(false, |f| f.is_file());
+            if !is_file {
+                continue;
+            }
+
+            if let Ok(file) = File::open(e.path()) {
+                let mut line = String::new();
+                if BufReader::new(file).read_line(&mut line).is_ok() {
+                    if let Some(program) = shebang_regex.captures(&line).and_then(|c| c.get(6)) {
+                        shebangs.insert(program.as_str().to_string());
+                    }
+                }
+            }
+        }
+        // println!("{:?}", shebangs);
+        shebangs
+    }
+
     pub fn find_used_c_headers(&mut self) -> HashSet<String> {
         let src_dir = if let Some(src_dir) = self.read_src_dir() {
             src_dir
@@ -291,6 +322,30 @@ impl Derivation {
 
     pub fn build(&self) -> Result<Vec<String>, std::io::Error> {
         build_drv_internal(&self.drv_path)
+    }
+
+    pub fn get_provided_binaries(&self) -> HashSet<String> {
+        self.build().map_or_else(
+            |_| HashSet::new(),
+            |outputs| {
+                let mut buf = HashSet::new();
+                outputs.iter().for_each(|out| {
+                    let mut out = PathBuf::from_str(out).unwrap();
+                    out.push("bin");
+                    if !out.exists() {
+                        return;
+                    }
+                    Walk::new(out.as_path())
+                        .into_iter()
+                        .flat_map(|r| r.into_iter())
+                        .map(|p| p.file_name().to_string_lossy().into_owned())
+                        .for_each(|f| {
+                            buf.insert(f);
+                        });
+                });
+                buf
+            },
+        )
     }
 }
 
