@@ -13,6 +13,10 @@ pub struct Cli {
     #[arg(long, default_value_t = false)]
     pub check_headers: bool,
 
+    /// whether to try and scan pyproject for (optional) listed dependencies
+    #[arg(long, default_value_t = true)]
+    pub check_pyproject: bool,
+
     /// output used C/C++ headers
     #[arg(long, default_value_t = false)]
     pub list_used_headers: bool,

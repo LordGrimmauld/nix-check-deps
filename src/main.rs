@@ -85,6 +85,12 @@ fn main() {
                     .any(|re| re.is_match(&dep_drv.drv_path))
             });
 
+            if cli.check_pyproject {
+                let used_py_deps = root.find_used_pyproject_deps();
+                dep_relations
+                    .retain(|dep_drv| !used_py_deps.iter().any(|py| dep_drv.matches_pname(py)));
+            }
+
             if cli.check_headers || cli.list_used_headers {
                 let used_headers = root.find_used_c_headers();
                 dep_relations.retain(|dep_drv| {

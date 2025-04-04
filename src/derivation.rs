@@ -2,9 +2,14 @@ use bzip2::read::BzDecoder;
 use flate2::read::GzDecoder;
 use ignore::Walk;
 // use nix_compat::derivation::Derivation;
+use pyproject_toml::PyProjectToml;
 use regex::Regex;
 use serde::Deserialize;
-use std::{collections::HashSet, fs::File, path::PathBuf};
+use std::{
+    collections::HashSet,
+    fs::{self, File},
+    path::PathBuf,
+};
 use tar::Archive;
 use tempfile::TempDir;
 use xz::read::XzDecoder;
@@ -204,43 +209,84 @@ impl Derivation {
         self.env.pname.as_ref().map_or(false, |p| p == pname)
     }
 
-    pub fn find_used_c_headers(&mut self) -> HashSet<String> {
-        if let Some(src_dir) = self.read_src_dir() {
-            // find used headers
-            let mut searcher = Searcher::new();
-            searcher.set_binary_detection(BinaryDetection::none());
-            let header_include_regex_str =
-                r##"^#include (<|")(.*\/)*(.*\.q?h(pp)?)(>|") *((\/\/.*)|(\/*))?\n?$"##;
-            let header_include_regex = Regex::new(header_include_regex_str).unwrap();
-            let matcher = RegexMatcher::new(header_include_regex_str).unwrap();
-            let mut used_headers: HashSet<String> = HashSet::new();
-            for result in Walk::new(&src_dir) {
-                let e = result.unwrap();
-                let is_file = e.file_type().map_or(false, |f| f.is_file());
-                if !is_file {
-                    continue;
-                }
-                searcher
-                    .search_path(
-                        &matcher,
-                        e.path(),
-                        UTF8(|_, match_bytes| {
-                            let include_path = header_include_regex
-                                .captures(match_bytes)
-                                .unwrap()
-                                .get(3)
-                                .unwrap()
-                                .as_str();
-                            used_headers.insert(include_path.to_string());
-                            Ok(true) // continue reading the file
-                        }),
-                    )
-                    .unwrap();
-            }
-            used_headers
+    pub fn find_used_pyproject_deps(&mut self) -> HashSet<String> {
+        let mut src_dir = if let Some(src_dir) = self.read_src_dir() {
+            src_dir
         } else {
-            HashSet::new()
+            return HashSet::new();
+        };
+
+        src_dir.push("pyproject.toml");
+
+        if !src_dir.try_exists().unwrap_or(false) {
+            return HashSet::new();
         }
+
+        let pyproj = if let Some(pyproj) = fs::read_to_string(src_dir)
+            .ok()
+            .and_then(|f| PyProjectToml::new(&f).ok())
+        {
+            pyproj
+        } else {
+            return HashSet::new();
+        };
+
+        if let Some(proj) = pyproj.project {
+            let req_deps = proj.dependencies.into_iter().flat_map(|v| v.into_iter());
+            let opt_deps = proj
+                .optional_dependencies
+                .into_iter()
+                .flat_map(|v| v.into_values().into_iter())
+                .flat_map(|f| f.into_iter());
+            let deps: HashSet<String> = opt_deps
+                .chain(req_deps)
+                .map(|r| r.name.to_string())
+                .collect();
+            return deps;
+        }
+
+        return HashSet::new();
+    }
+
+    pub fn find_used_c_headers(&mut self) -> HashSet<String> {
+        let src_dir = if let Some(src_dir) = self.read_src_dir() {
+            src_dir
+        } else {
+            return HashSet::new();
+        };
+
+        // find used headers
+        let mut searcher = Searcher::new();
+        searcher.set_binary_detection(BinaryDetection::none());
+        let header_include_regex_str =
+            r##"^#include (<|")(.*\/)*(.*\.q?h(pp)?)(>|") *((\/\/.*)|(\/*))?\n?$"##;
+        let header_include_regex = Regex::new(header_include_regex_str).unwrap();
+        let matcher = RegexMatcher::new(header_include_regex_str).unwrap();
+        let mut used_headers: HashSet<String> = HashSet::new();
+        for result in Walk::new(&src_dir) {
+            let e = result.unwrap();
+            let is_file = e.file_type().map_or(false, |f| f.is_file());
+            if !is_file {
+                continue;
+            }
+            searcher
+                .search_path(
+                    &matcher,
+                    e.path(),
+                    UTF8(|_, match_bytes| {
+                        let include_path = header_include_regex
+                            .captures(match_bytes)
+                            .unwrap()
+                            .get(3)
+                            .unwrap()
+                            .as_str();
+                        used_headers.insert(include_path.to_string());
+                        Ok(true) // continue reading the file
+                    }),
+                )
+                .unwrap();
+        }
+        used_headers
     }
 
     pub fn build(&self) -> Result<Vec<String>, std::io::Error> {
