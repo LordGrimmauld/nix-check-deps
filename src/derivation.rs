@@ -374,7 +374,7 @@ impl Derivation {
                         Ok(true) // continue reading the file
                     }),
                 )
-                .unwrap();
+                .ok();
         }
         used_headers
     }

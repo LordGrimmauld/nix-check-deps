@@ -171,7 +171,7 @@ fn main() {
                                         Ok(false) // stop reading the file
                                     }),
                                 )
-                                .unwrap();
+                                .ok();
                             return !found;
                         });
                     } else if is_link {
