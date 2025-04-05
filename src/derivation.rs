@@ -262,7 +262,7 @@ impl Derivation {
         let shebang_regex_str = r"^#! *\/((nix\/store\/.*\/)?(usr\/)?)bin\/((env +)?([^\s]+))";
         let shebang_regex = Regex::new(shebang_regex_str).unwrap();
         for e in Walk::new(&src_dir).into_iter().flat_map(Result::into_iter) {
-            let is_dir = e.file_type().is_some_and(|f| f.is_dir());
+            let is_dir = fs::canonicalize(e.path()).ok().is_some_and(|p| p.is_dir());
             if is_dir {
                 continue;
             }
@@ -284,7 +284,7 @@ impl Derivation {
         let mut shared_objects = HashSet::new();
         for out in self.build().iter().flatten() {
             for e in Walk::new(&out).into_iter().flat_map(Result::into_iter) {
-                let is_dir = e.file_type().is_some_and(|f| f.is_dir());
+                let is_dir = fs::canonicalize(e.path()).ok().is_some_and(|p| p.is_dir());
                 if is_dir {
                     continue;
                 }
@@ -317,7 +317,7 @@ impl Derivation {
         let mut shared_objects = HashSet::new();
         for out in self.build().iter().flatten() {
             for e in Walk::new(&out).into_iter().flat_map(Result::into_iter) {
-                let is_dir = e.file_type().is_some_and(|f| f.is_dir());
+                let is_dir = fs::canonicalize(e.path()).ok().is_some_and(|p| p.is_dir());
                 if is_dir {
                     continue;
                 }
@@ -354,7 +354,8 @@ impl Derivation {
         let matcher = RegexMatcher::new(header_include_regex_str).unwrap();
         let mut used_headers: HashSet<String> = HashSet::new();
         for e in Walk::new(&src_dir).into_iter().flat_map(Result::into_iter) {
-            let is_dir = e.file_type().is_some_and(|f| f.is_dir());
+            let is_dir = fs::canonicalize(e.path()).ok().is_some_and(|p| p.is_dir());
+
             if is_dir {
                 continue;
             }
@@ -505,7 +506,7 @@ pub fn test_headers_of_package_used(
             .into_iter()
             .flat_map(Result::into_iter)
         {
-            let is_dir = e.file_type().is_some_and(|f| f.is_dir());
+            let is_dir = fs::canonicalize(e.path()).ok().is_some_and(|p| p.is_dir());
             if is_dir {
                 continue;
             }
