@@ -10,7 +10,7 @@ pub struct Cli {
     pub attr: MaybeStdin<String>,
 
     /// whether to try and scan for c header files in use
-    #[arg(long, default_value_t = false)]
+    #[arg(long, default_value_t = true)]
     pub check_headers: bool,
 
     /// whether to try and scan pyproject for (optional) listed dependencies
