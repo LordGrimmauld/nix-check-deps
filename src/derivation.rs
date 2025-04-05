@@ -322,7 +322,8 @@ impl Derivation {
     }
 
     pub fn build(&self) -> Result<Vec<String>, std::io::Error> {
-        build_drv_internal(&self.drv_path)
+        build_drv_internal(&self.drv_path)?;
+        Ok(self.get_out_paths())
     }
 
     pub fn get_provided_binaries(&self) -> HashSet<String> {
