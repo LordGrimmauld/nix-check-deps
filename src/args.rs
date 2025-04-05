@@ -21,6 +21,10 @@ pub struct Cli {
     #[arg(long, default_value_t = true)]
     pub check_shebangs: bool,
 
+    /// whether to try and check binaries and shared objects for their library paths
+    #[arg(long, default_value_t = true)]
+    pub check_shared_objects: bool,
+
     /// output used C/C++ headers
     #[arg(long, default_value_t = false)]
     pub list_used_headers: bool,

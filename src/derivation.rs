@@ -1,6 +1,7 @@
 use bzip2::read::BzDecoder;
 use flate2::read::GzDecoder;
 use ignore::Walk;
+use lddtree::DependencyAnalyzer;
 use once_cell::sync::OnceCell;
 use pyproject_toml::PyProjectToml;
 use regex::Regex;
@@ -210,7 +211,7 @@ impl Derivation {
         self.env.pname.as_ref().map_or(false, |p| p == pname)
     }
 
-    pub fn find_used_pyproject_deps(&mut self) -> HashSet<String> {
+    pub fn find_used_pyproject_deps(&self) -> HashSet<String> {
         let src_dir = if let Some(src_dir) = self.get_src_dir() {
             src_dir
         } else {
@@ -250,7 +251,7 @@ impl Derivation {
         return HashSet::new();
     }
 
-    pub fn find_used_shebangs(&mut self) -> HashSet<String> {
+    pub fn find_used_shebangs(&self) -> HashSet<String> {
         let src_dir = if let Some(src_dir) = self.get_src_dir() {
             src_dir
         } else {
@@ -260,10 +261,9 @@ impl Derivation {
         let mut shebangs = HashSet::new();
         let shebang_regex_str = r"^#! *\/((nix\/store\/.*\/)?(usr\/)?)bin\/((env +)?([^\s]+))";
         let shebang_regex = Regex::new(shebang_regex_str).unwrap();
-        for result in Walk::new(&src_dir) {
-            let e = result.unwrap();
-            let is_file = e.file_type().map_or(false, |f| f.is_file());
-            if !is_file {
+        for e in Walk::new(&src_dir).into_iter().flat_map(Result::into_iter) {
+            let is_dir = e.file_type().is_some_and(|f| f.is_dir());
+            if is_dir {
                 continue;
             }
 
@@ -280,7 +280,65 @@ impl Derivation {
         shebangs
     }
 
-    pub fn find_used_c_headers(&mut self) -> HashSet<String> {
+    pub fn find_used_shared_objects(&mut self) -> HashSet<PathBuf> {
+        let mut shared_objects = HashSet::new();
+        for out in self.build().iter().flatten() {
+            for e in Walk::new(&out).into_iter().flat_map(Result::into_iter) {
+                let is_dir = e.file_type().is_some_and(|f| f.is_dir());
+                if is_dir {
+                    continue;
+                }
+
+                let is_elf = infer::get_from_path(e.path())
+                    .ok()
+                    .flatten()
+                    .is_some_and(|ft| {
+                        ft.mime_type() == "application/x-executable"
+                            || ft.mime_type() == "application/x-sharedlib"
+                    });
+
+                if is_elf {
+                    if let Ok(dep_tree) = DependencyAnalyzer::default().analyze(e.path()) {
+                        shared_objects.extend(
+                            dep_tree
+                                .libraries
+                                .into_values()
+                                .flat_map(|l| fs::canonicalize(l.path).into_iter()),
+                        );
+                    }
+                }
+            }
+        }
+        // println!("{:?}", shared_objects);
+        shared_objects
+    }
+
+    pub fn find_provided_shared_objects(&self) -> HashSet<PathBuf> {
+        let mut shared_objects = HashSet::new();
+        for out in self.build().iter().flatten() {
+            for e in Walk::new(&out).into_iter().flat_map(Result::into_iter) {
+                let is_dir = e.file_type().is_some_and(|f| f.is_dir());
+                if is_dir {
+                    continue;
+                }
+
+                let is_so = infer::get_from_path(e.path())
+                    .ok()
+                    .flatten()
+                    .is_some_and(|ft| {
+                        ft.mime_type() == "application/x-executable"
+                            || ft.mime_type() == "application/x-sharedlib"
+                    });
+                if is_so {
+                    shared_objects.extend(fs::canonicalize(e.path()).into_iter());
+                }
+            }
+        }
+        // println!("provided so: {:?}", shared_objects);
+        shared_objects
+    }
+
+    pub fn find_used_c_headers(&self) -> HashSet<String> {
         let src_dir = if let Some(src_dir) = self.get_src_dir() {
             src_dir
         } else {
@@ -295,10 +353,9 @@ impl Derivation {
         let header_include_regex = Regex::new(header_include_regex_str).unwrap();
         let matcher = RegexMatcher::new(header_include_regex_str).unwrap();
         let mut used_headers: HashSet<String> = HashSet::new();
-        for result in Walk::new(&src_dir) {
-            let e = result.unwrap();
-            let is_file = e.file_type().map_or(false, |f| f.is_file());
-            if !is_file {
+        for e in Walk::new(&src_dir).into_iter().flat_map(Result::into_iter) {
+            let is_dir = e.file_type().is_some_and(|f| f.is_dir());
+            if is_dir {
                 continue;
             }
             searcher
@@ -444,10 +501,12 @@ pub fn test_headers_of_package_used(
     dep_outputs: &mut Vec<String>,
 ) -> bool {
     for dep_output in dep_outputs {
-        for result in Walk::new(&dep_output) {
-            let e = result.unwrap();
-            let is_file = e.file_type().map_or(false, |f| f.is_file());
-            if !is_file {
+        for e in Walk::new(&dep_output)
+            .into_iter()
+            .flat_map(Result::into_iter)
+        {
+            let is_dir = e.file_type().is_some_and(|f| f.is_dir());
+            if is_dir {
                 continue;
             }
             let header = e

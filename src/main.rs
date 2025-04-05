@@ -121,6 +121,18 @@ fn main() {
                 });
             }
 
+            if cli.check_shared_objects {
+                let used_shared_objects = root.find_used_shared_objects();
+                dep_relations.retain(|dep_drv| {
+                    !dep_drv
+                        .find_provided_shared_objects()
+                        .intersection(&used_shared_objects)
+                        .any(|_| true)
+                });
+            }
+
+            root.find_used_shared_objects();
+
             // make sure the package exists in local store so it can be scanned
             // FIXME: this might still return Ok even if drv fails to actually build?
             let pkg_outputs = if let Ok(pkg_outputs) = root.build() {
@@ -136,10 +148,9 @@ fn main() {
             let mut searcher = Searcher::new();
             searcher.set_binary_detection(BinaryDetection::none());
             for output in pkg_outputs {
-                for result in Walk::new(&output) {
-                    let e = result.unwrap();
-                    let is_file = e.file_type().map_or(false, |f| f.is_file());
-                    let is_link = e.file_type().map_or(false, |f| f.is_symlink());
+                for e in Walk::new(&output).into_iter().flat_map(Result::into_iter) {
+                    let is_file = e.file_type().is_some_and(|f| f.is_file());
+                    let is_link = e.file_type().is_some_and(|f| f.is_symlink());
 
                     if is_file {
                         dep_relations.retain(|dep_drv| {
