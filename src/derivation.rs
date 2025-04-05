@@ -1,7 +1,7 @@
 use bzip2::read::BzDecoder;
 use flate2::read::GzDecoder;
 use ignore::Walk;
-// use nix_compat::derivation::Derivation;
+use once_cell::sync::OnceCell;
 use pyproject_toml::PyProjectToml;
 use regex::Regex;
 use serde::Deserialize;
@@ -86,7 +86,7 @@ pub struct Derivation {
     #[serde(skip_deserializing)]
     pub drv_path: String,
     #[serde(skip_deserializing)]
-    extracted_src_archive: Option<TempDir>,
+    extracted_src_archive: OnceCell<Option<PathBuf>>,
 }
 
 impl Derivation {
@@ -141,7 +141,7 @@ impl Derivation {
         self.input_drvs.clone().into_keys().collect()
     }
 
-    pub fn read_src_dir(&mut self) -> Option<PathBuf> {
+    fn read_src_dir(&self) -> Option<PathBuf> {
         let src_drv = self.env.src.as_ref()?;
         // TODO: maybe integrate with https://github.com/milahu/nix-build-debug or similar
 
@@ -154,13 +154,13 @@ impl Derivation {
             return Some(src_archive_path);
         }
 
-        if self.extracted_src_archive.is_none() {
-            self.extracted_src_archive = try_extract_source_archive(src_archive_path);
-        }
+        try_extract_source_archive(src_archive_path).map(|t| t.into_path())
+    }
 
-        self.extracted_src_archive
-            .as_ref()
-            .map(|p| p.path().to_path_buf())
+    pub fn get_src_dir(&self) -> &Option<PathBuf> {
+        return self
+            .extracted_src_archive
+            .get_or_init(|| self.read_src_dir());
     }
 
     pub fn get_out_paths(&self) -> Vec<String> {
@@ -211,12 +211,13 @@ impl Derivation {
     }
 
     pub fn find_used_pyproject_deps(&mut self) -> HashSet<String> {
-        let mut src_dir = if let Some(src_dir) = self.read_src_dir() {
+        let src_dir = if let Some(src_dir) = self.get_src_dir() {
             src_dir
         } else {
             return HashSet::new();
         };
 
+        let mut src_dir = src_dir.clone();
         src_dir.push("pyproject.toml");
 
         if !src_dir.try_exists().unwrap_or(false) {
@@ -250,7 +251,7 @@ impl Derivation {
     }
 
     pub fn find_used_shebangs(&mut self) -> HashSet<String> {
-        let src_dir = if let Some(src_dir) = self.read_src_dir() {
+        let src_dir = if let Some(src_dir) = self.get_src_dir() {
             src_dir
         } else {
             return HashSet::new();
@@ -280,7 +281,7 @@ impl Derivation {
     }
 
     pub fn find_used_c_headers(&mut self) -> HashSet<String> {
-        let src_dir = if let Some(src_dir) = self.read_src_dir() {
+        let src_dir = if let Some(src_dir) = self.get_src_dir() {
             src_dir
         } else {
             return HashSet::new();
@@ -356,7 +357,7 @@ impl Clone for Derivation {
             outputs: self.outputs.clone(),
             input_drvs: self.input_drvs.clone(),
             drv_path: self.drv_path.clone(),
-            extracted_src_archive: None,
+            extracted_src_archive: OnceCell::new(),
         }
     }
 }

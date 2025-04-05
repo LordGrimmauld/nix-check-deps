@@ -923,6 +923,7 @@ dependencies = [
  "flate2",
  "grep",
  "ignore",
+ "once_cell",
  "pyproject-toml",
  "rayon",
  "regex",
