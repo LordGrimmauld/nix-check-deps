@@ -112,32 +112,6 @@ impl Derivation {
         })
     }
 
-    pub fn referrers(&self) -> Vec<String> {
-        // nix-store --query --referrers <path>
-        let drv_path = if self.drv_path.ends_with("^*") {
-            self.drv_path.trim_end_matches("^*")
-        } else {
-            &self.drv_path
-        };
-
-        let refs = Command::new("nix-store")
-            .arg("--query")
-            .arg("--referrers")
-            .arg(&drv_path)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
-            .spawn()
-            .ok()
-            .and_then(|f| f.stdout)
-            .map_or_else(Vec::new, |out| {
-                BufReader::new(out)
-                    .lines()
-                    .filter_map(Result::ok) // Skip any lines that fail to parse
-                    .collect()
-            });
-        refs
-    }
-
     fn get_input_drv_paths(&self) -> Vec<String> {
         self.input_drvs.clone().into_keys().collect()
     }

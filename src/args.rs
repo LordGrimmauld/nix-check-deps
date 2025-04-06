@@ -33,10 +33,6 @@ pub struct Cli {
     #[arg(long, default_value_t = false)]
     pub skip_dep_usage_check: bool,
 
-    /// check whether library is unused
-    #[arg(long, default_value_t = false)]
-    pub reverse: bool,
-
     /// drv names to skip
     #[arg(long, default_value_t = String::from(""))]
     pub skip: String,

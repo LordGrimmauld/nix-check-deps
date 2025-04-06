@@ -44,24 +44,9 @@ fn main() {
 
     let drv = Derivation::read_drv(&attr).unwrap();
 
+    let deps = drv.read_deps();
     // (dependent, {dependency_name -> [outputs] } )
-    let mut scan_roots: Vec<(Derivation, HashSet<Derivation>)> = if !cli.reverse {
-        let deps = drv.read_deps();
-        vec![(drv, deps)]
-    } else {
-        drv.referrers()
-            .iter()
-            .map(|r| {
-                (
-                    Derivation::read_drv(r).unwrap(),
-                    [drv.clone()]
-                        .iter()
-                        .cloned()
-                        .collect::<HashSet<Derivation>>(),
-                )
-            })
-            .collect()
-    };
+    let mut scan_roots: Vec<(Derivation, HashSet<Derivation>)> = vec![(drv, deps)];
 
     let pool = ThreadPoolBuilder::new()
         .num_threads(cli.jobs)
@@ -70,6 +55,7 @@ fn main() {
 
     let skipped: Vec<String> = cli.skip.split(",").map(str::to_owned).collect();
 
+    // FIXME: this doesn't really check in parallel, this never worked in the first place
     pool.install(|| {
         scan_roots.iter_mut().for_each(|(root, dep_relations)| {
             if skipped.iter().any(|s| root.matches_pname(s)) {
