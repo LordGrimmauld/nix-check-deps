@@ -87,7 +87,7 @@ pub struct Derivation {
     #[serde(skip_deserializing)]
     pub drv_path: String,
     #[serde(skip_deserializing)]
-    extracted_src_archive: OnceCell<Option<PathBuf>>,
+    extracted_src_archive: OnceCell<Option<TempDir>>,
 }
 
 impl Derivation {
@@ -155,13 +155,11 @@ impl Derivation {
             return Some(src_archive_path);
         }
 
-        try_extract_source_archive(src_archive_path).map(|t| t.into_path())
-    }
-
-    pub fn get_src_dir(&self) -> &Option<PathBuf> {
         return self
             .extracted_src_archive
-            .get_or_init(|| self.read_src_dir());
+            .get_or_init(|| try_extract_source_archive(src_archive_path))
+            .as_ref()
+            .map(|t| t.path().to_path_buf());
     }
 
     pub fn get_out_paths(&self) -> Vec<String> {
@@ -212,7 +210,7 @@ impl Derivation {
     }
 
     pub fn find_used_pyproject_deps(&self) -> HashSet<String> {
-        let src_dir = if let Some(src_dir) = self.get_src_dir() {
+        let src_dir = if let Some(src_dir) = self.read_src_dir() {
             src_dir
         } else {
             return HashSet::new();
@@ -252,7 +250,7 @@ impl Derivation {
     }
 
     pub fn find_used_shebangs(&self) -> HashSet<String> {
-        let src_dir = if let Some(src_dir) = self.get_src_dir() {
+        let src_dir = if let Some(src_dir) = self.read_src_dir() {
             src_dir
         } else {
             return HashSet::new();
@@ -280,7 +278,7 @@ impl Derivation {
         shebangs
     }
 
-    pub fn find_used_shared_objects(&mut self) -> HashSet<PathBuf> {
+    pub fn find_used_shared_objects(&self) -> HashSet<PathBuf> {
         let mut shared_objects = HashSet::new();
         for out in self.build().iter().flatten() {
             for e in Walk::new(&out).into_iter().flat_map(Result::into_iter) {
@@ -339,7 +337,7 @@ impl Derivation {
     }
 
     pub fn find_used_c_headers(&self) -> HashSet<String> {
-        let src_dir = if let Some(src_dir) = self.get_src_dir() {
+        let src_dir = if let Some(src_dir) = self.read_src_dir() {
             src_dir
         } else {
             return HashSet::new();
