@@ -85,6 +85,8 @@ pub struct Derivation {
     outputs: HashMap<String, DrvOutput>,
     input_drvs: HashMap<String, DrvInput>,
     #[serde(skip_deserializing)]
+    parsed_input_drvs: OnceCell<Vec<Derivation>>,
+    #[serde(skip_deserializing)]
     pub drv_path: String,
     #[serde(skip_deserializing)]
     extracted_src_archive: OnceCell<Option<TempDir>>,
@@ -137,7 +139,26 @@ impl Derivation {
     }
 
     pub fn get_out_paths(&self) -> Vec<String> {
-        self.outputs.values().map(DrvOutput::path).collect()
+        let mut outputs: Vec<String> = self.outputs.values().map(DrvOutput::path).collect();
+
+        if let Some(pname) = &self.env.pname {
+            let inputs = self.parsed_input_drvs.get_or_init(|| {
+                self.input_drvs
+                    .keys()
+                    .into_iter()
+                    .flat_map(|p| Derivation::read_drv(p).into_iter())
+                    .collect()
+            });
+
+            outputs.extend(
+                inputs
+                    .into_iter()
+                    .filter(|d| d.matches_pname(&pname))
+                    .flat_map(|d| d.get_out_paths().into_iter()),
+            );
+        }
+
+        outputs
     }
 
     pub fn read_deps(&self) -> HashSet<Derivation> {
@@ -387,6 +408,7 @@ impl Clone for Derivation {
             env: self.env.clone(),
             outputs: self.outputs.clone(),
             input_drvs: self.input_drvs.clone(),
+            parsed_input_drvs: OnceCell::new(),
             drv_path: self.drv_path.clone(),
             extracted_src_archive: OnceCell::new(),
         }
