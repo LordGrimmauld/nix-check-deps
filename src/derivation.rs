@@ -154,7 +154,10 @@ impl Derivation {
                 inputs
                     .into_iter()
                     .filter(|d| d.matches_pname(&pname))
-                    .flat_map(|d| d.get_out_paths().into_iter()),
+                    .flat_map(|d| {
+                        println!("recurse");
+                        d.get_out_paths().into_iter()
+                    }),
             );
         }
 
@@ -399,19 +402,6 @@ impl Derivation {
                 buf
             },
         )
-    }
-}
-
-impl Clone for Derivation {
-    fn clone(&self) -> Self {
-        Derivation {
-            env: self.env.clone(),
-            outputs: self.outputs.clone(),
-            input_drvs: self.input_drvs.clone(),
-            parsed_input_drvs: OnceCell::new(),
-            drv_path: self.drv_path.clone(),
-            extracted_src_archive: OnceCell::new(),
-        }
     }
 }
 

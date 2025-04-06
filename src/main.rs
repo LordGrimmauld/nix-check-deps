@@ -7,7 +7,7 @@ use ignore::Walk;
 use rayon::ThreadPoolBuilder;
 // use nix_compat::derivation::Derivation;
 use regex::Regex;
-use std::{collections::HashSet, path::Path};
+use std::{collections::HashSet, path::Path, time::Instant};
 
 use grep::{
     regex::RegexMatcher,
@@ -72,6 +72,7 @@ fn main() {
             });
 
             if cli.check_headers || cli.list_used_headers {
+                let start = Instant::now();
                 let used_headers = root.find_used_c_headers();
                 dep_relations.retain(|dep_drv| {
                     dep_drv.build().unwrap();
@@ -85,6 +86,9 @@ fn main() {
                         println!("{} uses header: {}", root.drv_path, header);
                     }
                 }
+                if cli.benchmark {
+                    println!("check-headers took {:.2?} seconds", start.elapsed());
+                }
             }
 
             if cli.skip_dep_usage_check {
@@ -92,12 +96,17 @@ fn main() {
             }
 
             if cli.check_pyproject {
+                let start = Instant::now();
                 let used_py_deps = root.find_used_pyproject_deps();
                 dep_relations
                     .retain(|dep_drv| !used_py_deps.iter().any(|py| dep_drv.matches_pname(py)));
+                if cli.benchmark {
+                    println!("check-pyproject took {:.2?} seconds", start.elapsed());
+                }
             }
 
             if cli.check_shebangs {
+                let start = Instant::now();
                 let used_shebangs = root.find_used_shebangs();
                 dep_relations.retain(|dep_drv| {
                     !dep_drv
@@ -105,9 +114,13 @@ fn main() {
                         .intersection(&used_shebangs)
                         .any(|_| true)
                 });
+                if cli.benchmark {
+                    println!("check-shebangs took {:.2?} seconds", start.elapsed());
+                }
             }
 
             if cli.check_shared_objects {
+                let start = Instant::now();
                 let used_shared_objects = root.find_used_shared_objects();
                 dep_relations.retain(|dep_drv| {
                     !dep_drv
@@ -115,9 +128,10 @@ fn main() {
                         .intersection(&used_shared_objects)
                         .any(|_| true)
                 });
+                if cli.benchmark {
+                    println!("check-shared-objects took {:.2?} seconds", start.elapsed());
+                }
             }
-
-            root.find_used_shared_objects();
 
             // make sure the package exists in local store so it can be scanned
             // FIXME: this might still return Ok even if drv fails to actually build?
