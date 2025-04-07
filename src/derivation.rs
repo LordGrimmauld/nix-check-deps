@@ -4,7 +4,7 @@ use ignore::Walk;
 use lddtree::DependencyAnalyzer;
 use once_cell::sync::OnceCell;
 use pyproject_toml::PyProjectToml;
-use regex::Regex;
+use regex::{Regex, RegexBuilder};
 use serde::Deserialize;
 use std::{
     collections::HashSet,
@@ -344,9 +344,12 @@ impl Derivation {
         // find used headers
         let mut searcher = Searcher::new();
         searcher.set_binary_detection(BinaryDetection::none());
-        let header_include_regex_str =
-            r##"^#include (<|")(.*\/)*(.*\.q?h(pp)?)(>|") *((\/\/.*)|(\/*))?\n?$"##;
-        let header_include_regex = Regex::new(header_include_regex_str).unwrap();
+        // assumption: valid C/C++ code
+        let header_include_regex_str = r##"^\s*#\s*include\s*(<|")([^>"]+)(>|").*$"##;
+        let header_include_regex = RegexBuilder::new(header_include_regex_str)
+            .multi_line(true)
+            .build()
+            .unwrap();
         let matcher = RegexMatcher::new(header_include_regex_str).unwrap();
         let mut used_headers: HashSet<String> = HashSet::new();
         for e in Walk::new(&src_dir).into_iter().flat_map(Result::into_iter) {
@@ -363,9 +366,13 @@ impl Derivation {
                         let include_path = header_include_regex
                             .captures(match_bytes)
                             .unwrap()
-                            .get(3)
+                            .get(2)
                             .unwrap()
                             .as_str();
+                        let include_path = include_path
+                            .rsplit_once('/')
+                            .map(|s| s.1)
+                            .unwrap_or(include_path);
                         used_headers.insert(include_path.to_string());
                         Ok(true) // continue reading the file
                     }),
