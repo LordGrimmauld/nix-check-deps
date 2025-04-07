@@ -155,7 +155,6 @@ impl Derivation {
                     .into_iter()
                     .filter(|d| d.matches_pname(&pname))
                     .flat_map(|d| {
-                        println!("recurse");
                         d.get_out_paths().into_iter()
                     }),
             );
