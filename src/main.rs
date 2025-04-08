@@ -1,4 +1,3 @@
-use log::warn;
 mod args;
 mod derivation;
 use crate::args::Cli;
