@@ -88,9 +88,7 @@ fn main() {
                         info!("{} uses header: {}", root.drv_path, header);
                     }
                 }
-                if cli.benchmark {
-                    info!("check-headers took {:.2?} seconds", start.elapsed());
-                }
+                info!("check-headers took {:.2?} seconds", start.elapsed());
             }
 
             if cli.skip_dep_usage_check {
@@ -102,9 +100,7 @@ fn main() {
                 let used_py_deps = root.find_used_pyproject_deps();
                 dep_relations
                     .retain(|dep_drv| !used_py_deps.iter().any(|py| dep_drv.matches_pname(py)));
-                if cli.benchmark {
-                    info!("check-pyproject took {:.2?} seconds", start.elapsed());
-                }
+                info!("check-pyproject took {:.2?} seconds", start.elapsed());
             }
 
             if cli.check_shebangs {
@@ -116,9 +112,7 @@ fn main() {
                         .intersection(&used_shebangs)
                         .any(|_| true)
                 });
-                if cli.benchmark {
-                    info!("check-shebangs took {:.2?} seconds", start.elapsed());
-                }
+                info!("check-shebangs took {:.2?} seconds", start.elapsed());
             }
 
             if cli.check_shared_objects {
@@ -130,9 +124,7 @@ fn main() {
                         .intersection(&used_shared_objects)
                         .any(|_| true)
                 });
-                if cli.benchmark {
-                    info!("check-shared-objects took {:.2?} seconds", start.elapsed());
-                }
+                info!("check-shared-objects took {:.2?} seconds", start.elapsed());
             }
 
             // make sure the package exists in local store so it can be scanned
