@@ -7,7 +7,7 @@ on:
   push:
 
 jobs:
-  test_phaser:
+  rust-build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -15,7 +15,7 @@ jobs:
         run: |
           rustup update
           rustup component add clippy
-          rustup install nightly
+          rustup install stable
       - name: Toolchain info
         run: |
           cargo --version --verbose
@@ -23,15 +23,12 @@ jobs:
           cargo clippy --version
       - name: Lint
         run: |
-          cd nix-check-deps
           cargo fmt -- --check
           cargo clippy -- -D warnings
       - name: Test
         run: |
-          cd nix-check-deps
           cargo check
           cargo test --all
       - name: Build
         run: |
-          cd nix-check-deps
           cargo build --release
