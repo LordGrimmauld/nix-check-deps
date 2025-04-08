@@ -1,4 +1,3 @@
-use log::warn;
 mod args;
 mod derivation;
 use crate::args::Cli;
@@ -8,7 +7,7 @@ use ignore::Walk;
 use rayon::ThreadPoolBuilder;
 // use nix_compat::derivation::Derivation;
 use regex::Regex;
-use std::{collections::HashSet, path::Path, time::Instant};
+use std::{path::Path, time::Instant};
 
 use grep::{
     regex::RegexMatcher,
@@ -48,7 +47,7 @@ fn main() {
 
     let deps = drv.read_deps();
     // (dependent, {dependency_name -> [outputs] } )
-    let mut scan_roots: Vec<(Derivation, HashSet<Derivation>)> = vec![(drv, deps)];
+    let mut scan_roots: Vec<(Derivation, Vec<Derivation>)> = vec![(drv, deps)];
 
     let pool = ThreadPoolBuilder::new()
         .num_threads(cli.jobs)
@@ -150,7 +149,7 @@ fn main() {
             let mut searcher = Searcher::new();
             searcher.set_binary_detection(BinaryDetection::none());
             for output in pkg_outputs {
-                for e in Walk::new(&output).into_iter().flat_map(Result::into_iter) {
+                for e in Walk::new(&output).flat_map(Result::into_iter) {
                     let is_file = e.file_type().is_some_and(|f| f.is_file());
                     let is_link = e.file_type().is_some_and(|f| f.is_symlink());
 
@@ -174,7 +173,7 @@ fn main() {
                                     }),
                                 )
                                 .ok();
-                            return !found;
+                            !found
                         });
                     } else if is_link {
                         dep_relations.retain(|dep_drv| {

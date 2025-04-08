@@ -103,7 +103,7 @@ impl Derivation {
         let output = Command::new("nix")
             .arg("derivation")
             .arg("show")
-            .arg(&drv_path)
+            .arg(drv_path)
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
             .spawn()
@@ -123,8 +123,8 @@ impl Derivation {
         let src_drv = self.env.src.as_ref()?;
         // TODO: maybe integrate with https://github.com/milahu/nix-build-debug or similar
 
-        let build_results = build_drv_internal(&src_drv).ok()?;
-        let src_archive_path = PathBuf::from(build_results.get(0)?);
+        let build_results = build_drv_internal(src_drv).ok()?;
+        let src_archive_path = PathBuf::from(build_results.first()?);
         if !src_archive_path.exists() {
             return None;
         }
@@ -132,11 +132,10 @@ impl Derivation {
             return Some(src_archive_path);
         }
 
-        return self
-            .extracted_src_archive
+        self.extracted_src_archive
             .get_or_init(|| try_extract_source_archive(src_archive_path))
             .as_ref()
-            .map(|t| t.path().to_path_buf());
+            .map(|t| t.path().to_path_buf())
     }
 
     pub fn get_out_paths(&self) -> Vec<String> {
@@ -146,26 +145,25 @@ impl Derivation {
             let inputs = self.parsed_input_drvs.get_or_init(|| {
                 self.input_drvs
                     .keys()
-                    .into_iter()
                     .flat_map(|p| Derivation::read_drv(p).into_iter())
                     .collect()
             });
 
             outputs.extend(
                 inputs
-                    .into_iter()
-                    .filter(|d| d.matches_pname(&pname))
-                    .flat_map(|d| d.get_out_paths().into_iter()),
+                    .iter()
+                    .filter(|d| d.matches_pname(pname))
+                    .flat_map(|d| d.get_out_paths()),
             );
         }
 
         outputs
     }
 
-    pub fn read_deps(&self) -> HashSet<Derivation> {
+    pub fn read_deps(&self) -> Vec<Derivation> {
         let dev_inputs: Vec<String> = self.env.get_build_inputs();
 
-        let mut dep_relations: HashSet<Derivation> = HashSet::new();
+        let mut dep_relations: Vec<Derivation> = Vec::new();
         let mut propagated: Vec<String> = Vec::new();
         let check_inputs = self.env.get_check_inputs();
 
@@ -176,7 +174,7 @@ impl Derivation {
             let outputs: Vec<String> = dep_drv.get_out_paths();
 
             if outputs.iter().any(|o| dev_inputs.contains(o)) {
-                dep_relations.insert(dep_drv);
+                dep_relations.push(dep_drv);
             }
             propagated.append(&mut propagated_drvs.clone());
         }
@@ -191,11 +189,11 @@ impl Derivation {
                 .iter()
                 .any(|p| dep_drv.get_out_paths().contains(p))
         });
-        return dep_relations;
+        dep_relations
     }
 
     pub fn matches_pname(&self, pname: &str) -> bool {
-        self.env.pname.as_ref().map_or(false, |p| p == pname)
+        self.env.pname.as_ref().is_some_and(|p| p == pname)
     }
 
     pub fn find_used_pyproject_deps(&self) -> HashSet<String> {
@@ -226,7 +224,7 @@ impl Derivation {
             let opt_deps = proj
                 .optional_dependencies
                 .into_iter()
-                .flat_map(|v| v.into_values().into_iter())
+                .flat_map(|v| v.into_values())
                 .flat_map(|f| f.into_iter());
             let deps: HashSet<String> = opt_deps
                 .chain(req_deps)
@@ -235,7 +233,7 @@ impl Derivation {
             return deps;
         }
 
-        return HashSet::new();
+        HashSet::new()
     }
 
     pub fn find_used_shebangs(&self) -> HashSet<String> {
@@ -248,7 +246,7 @@ impl Derivation {
         let mut shebangs = HashSet::new();
         let shebang_regex_str = r"^#! *\/((nix\/store\/.*\/)?(usr\/)?)bin\/((env +)?([^\s]+))";
         let shebang_regex = Regex::new(shebang_regex_str).unwrap();
-        for e in Walk::new(&src_dir).into_iter().flat_map(Result::into_iter) {
+        for e in Walk::new(&src_dir).flat_map(Result::into_iter) {
             let is_dir = fs::canonicalize(e.path()).ok().is_some_and(|p| p.is_dir());
             if is_dir {
                 continue;
@@ -275,7 +273,7 @@ impl Derivation {
     pub fn find_used_shared_objects(&self) -> HashSet<PathBuf> {
         let mut shared_objects = HashSet::new();
         for out in self.build().iter().flatten() {
-            for e in Walk::new(&out).into_iter().flat_map(Result::into_iter) {
+            for e in Walk::new(out).flat_map(Result::into_iter) {
                 let is_dir = fs::canonicalize(e.path()).ok().is_some_and(|p| p.is_dir());
                 if is_dir {
                     continue;
@@ -308,7 +306,7 @@ impl Derivation {
     pub fn find_provided_shared_objects(&self) -> HashSet<PathBuf> {
         let mut shared_objects = HashSet::new();
         for out in self.build().iter().flatten() {
-            for e in Walk::new(&out).into_iter().flat_map(Result::into_iter) {
+            for e in Walk::new(out).flat_map(Result::into_iter) {
                 let is_dir = fs::canonicalize(e.path()).ok().is_some_and(|p| p.is_dir());
                 if is_dir {
                     continue;
@@ -348,7 +346,7 @@ impl Derivation {
             .unwrap();
         let matcher = RegexMatcher::new(header_include_regex_str).unwrap();
         let mut used_headers: HashSet<String> = HashSet::new();
-        for e in Walk::new(&src_dir).into_iter().flat_map(Result::into_iter) {
+        for e in Walk::new(&src_dir).flat_map(Result::into_iter) {
             let is_dir = fs::canonicalize(e.path()).ok().is_some_and(|p| p.is_dir());
 
             if is_dir {
@@ -395,7 +393,6 @@ impl Derivation {
                         return;
                     }
                     Walk::new(out.as_path())
-                        .into_iter()
                         .flat_map(|r| r.into_iter())
                         .map(|p| p.file_name().to_string_lossy().into_owned())
                         .for_each(|f| {
@@ -466,7 +463,7 @@ fn try_extract_source_archive(src_archive_path: PathBuf) -> Option<TempDir> {
 pub fn eval_attr_to_drv_path(attr: &str) -> Option<String> {
     let output = Command::new("nix")
         .arg("eval")
-        .arg(&attr)
+        .arg(attr)
         .arg("--apply")
         .arg("attr: attr.drvPath")
         .arg("--json")
@@ -478,10 +475,7 @@ pub fn eval_attr_to_drv_path(attr: &str) -> Option<String> {
 }
 
 pub fn get_store_hash(store_path: &str) -> String {
-    return store_path
-        .strip_prefix("/nix/store/")
-        .unwrap_or(&store_path)[..32]
-        .to_owned();
+    store_path.strip_prefix("/nix/store/").unwrap_or(store_path)[..32].to_owned()
 }
 
 pub fn test_headers_of_package_used(
@@ -489,10 +483,7 @@ pub fn test_headers_of_package_used(
     dep_outputs: &mut Vec<String>,
 ) -> bool {
     for dep_output in dep_outputs {
-        for e in Walk::new(&dep_output)
-            .into_iter()
-            .flat_map(Result::into_iter)
-        {
+        for e in Walk::new(&dep_output).flat_map(Result::into_iter) {
             let is_dir = fs::canonicalize(e.path()).ok().is_some_and(|p| p.is_dir());
             if is_dir {
                 continue;
