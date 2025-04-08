@@ -62,7 +62,7 @@
     // {
 
       githubActions = nix-github-actions.lib.mkGithubMatrix {
-        checks = outputs.x86_64.packages;
+        checks = outputs.x86_64-linux.packages;
       };
     };
 }
