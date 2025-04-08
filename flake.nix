@@ -37,14 +37,8 @@
           packages.nix-check-deps = pkgs.rustPlatform.buildRustPackage {
             name = "nix-check-deps";
             version = "1.0.0";
-
             src = ./.;
-            cargoLock = {
-              lockFile = ./Cargo.lock;
-            };
-
-            # skips rebuilding the whole thing with debug info
-            doCheck = false;
+            cargoLock.lockFile = ./Cargo.lock;
           };
 
           devShell = pkgs.mkShell {
@@ -62,7 +56,7 @@
     // {
 
       githubActions = nix-github-actions.lib.mkGithubMatrix {
-        checks = outputs.packages.x86_64-linux;
+        checks = nixpkgs.lib.getAttrs [ "x86_64-linux" ] outputs.packages;
       };
     };
 }
