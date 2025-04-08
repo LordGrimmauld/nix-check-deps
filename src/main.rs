@@ -1,3 +1,4 @@
+use log::warn;
 mod args;
 mod derivation;
 use crate::args::Cli;
@@ -17,6 +18,7 @@ use grep::{
 use std::fs::{self};
 
 fn main() {
+    env_logger::init();
     let permitted_unused_deps = vec![
         Regex::new("iconv-").unwrap(),
         Regex::new("gtest-").unwrap(),

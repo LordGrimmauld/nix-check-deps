@@ -2,6 +2,7 @@ use bzip2::read::BzDecoder;
 use flate2::read::GzDecoder;
 use ignore::Walk;
 use lddtree::DependencyAnalyzer;
+use log::{debug, warn};
 use once_cell::sync::OnceCell;
 use pyproject_toml::PyProjectToml;
 use regex::{Regex, RegexBuilder};
@@ -154,9 +155,7 @@ impl Derivation {
                 inputs
                     .into_iter()
                     .filter(|d| d.matches_pname(&pname))
-                    .flat_map(|d| {
-                        d.get_out_paths().into_iter()
-                    }),
+                    .flat_map(|d| d.get_out_paths().into_iter()),
             );
         }
 
@@ -180,10 +179,6 @@ impl Derivation {
                 dep_relations.insert(dep_drv);
             }
             propagated.append(&mut propagated_drvs.clone());
-
-            // println!("drv input: {:?}", dep_drv_path);
-            // println!("outputs: {:?}", outputs);
-            // println!("propagated: {:?}", propagated_drvs);
         }
 
         dep_relations.retain(|dep_drv| {
@@ -196,9 +191,6 @@ impl Derivation {
                 .iter()
                 .any(|p| dep_drv.get_out_paths().contains(p))
         });
-        // println!("dev inputs: {:?}", dev_inputs);
-        // println!("check inputs: {:?}", check_inputs);
-        // println!("dep relations: {:?}", dep_relations);
         return dep_relations;
     }
 
@@ -266,6 +258,11 @@ impl Derivation {
                 let mut line = String::new();
                 if BufReader::new(file).read_line(&mut line).is_ok() {
                     if let Some(program) = shebang_regex.captures(&line).and_then(|c| c.get(6)) {
+                        debug!(
+                            "{} uses shebang program: {}",
+                            e.path().display(),
+                            program.as_str()
+                        );
                         shebangs.insert(program.as_str().to_string());
                     }
                 }
@@ -459,7 +456,7 @@ fn try_extract_source_archive(src_archive_path: PathBuf) -> Option<TempDir> {
         //     return Some(tmp_dir.into_path());
     }
 
-    println!(
+    warn!(
         "unknown archive format for object: {}",
         src_archive_path.to_string_lossy()
     );
@@ -508,7 +505,7 @@ pub fn test_headers_of_package_used(
                 .unwrap()
                 .to_string();
             if used_headers.contains(&header) {
-                // println!("found matching header {} for pkg {}", header, dep_output);
+                debug!("found matching header {} for pkg {}", header, dep_output);
                 return true;
             }
         }
