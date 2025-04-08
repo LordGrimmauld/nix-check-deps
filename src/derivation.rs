@@ -160,10 +160,10 @@ impl Derivation {
         outputs
     }
 
-    pub fn read_deps(&self) -> HashSet<Derivation> {
+    pub fn read_deps(&self) -> Vec<Derivation> {
         let dev_inputs: Vec<String> = self.env.get_build_inputs();
 
-        let mut dep_relations: HashSet<Derivation> = HashSet::new();
+        let mut dep_relations: Vec<Derivation> = Vec::new();
         let mut propagated: Vec<String> = Vec::new();
         let check_inputs = self.env.get_check_inputs();
 
@@ -174,7 +174,7 @@ impl Derivation {
             let outputs: Vec<String> = dep_drv.get_out_paths();
 
             if outputs.iter().any(|o| dev_inputs.contains(o)) {
-                dep_relations.insert(dep_drv);
+                dep_relations.push(dep_drv);
             }
             propagated.append(&mut propagated_drvs.clone());
         }
