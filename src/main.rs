@@ -4,6 +4,7 @@ use crate::args::Cli;
 use clap::Parser;
 use derivation::Derivation;
 use ignore::Walk;
+use log::info;
 use rayon::ThreadPoolBuilder;
 // use nix_compat::derivation::Derivation;
 use regex::Regex;
@@ -63,8 +64,8 @@ fn main() {
                 return;
             }
 
-            // println!("rels {:?}", dep_relations);
-            // println!("root {:?}", root.drv_path);
+            // debug!("rels {:?}", dep_relations);
+            // debug!("root {:?}", root.drv_path);
 
             dep_relations.retain(|dep_drv| {
                 !permitted_unused_deps
@@ -84,11 +85,11 @@ fn main() {
                 });
                 if cli.list_used_headers {
                     for header in used_headers {
-                        println!("{} uses header: {}", root.drv_path, header);
+                        info!("{} uses header: {}", root.drv_path, header);
                     }
                 }
                 if cli.benchmark {
-                    println!("check-headers took {:.2?} seconds", start.elapsed());
+                    info!("check-headers took {:.2?} seconds", start.elapsed());
                 }
             }
 
@@ -102,7 +103,7 @@ fn main() {
                 dep_relations
                     .retain(|dep_drv| !used_py_deps.iter().any(|py| dep_drv.matches_pname(py)));
                 if cli.benchmark {
-                    println!("check-pyproject took {:.2?} seconds", start.elapsed());
+                    info!("check-pyproject took {:.2?} seconds", start.elapsed());
                 }
             }
 
@@ -116,7 +117,7 @@ fn main() {
                         .any(|_| true)
                 });
                 if cli.benchmark {
-                    println!("check-shebangs took {:.2?} seconds", start.elapsed());
+                    info!("check-shebangs took {:.2?} seconds", start.elapsed());
                 }
             }
 
@@ -130,7 +131,7 @@ fn main() {
                         .any(|_| true)
                 });
                 if cli.benchmark {
-                    println!("check-shared-objects took {:.2?} seconds", start.elapsed());
+                    info!("check-shared-objects took {:.2?} seconds", start.elapsed());
                 }
             }
 
@@ -139,7 +140,7 @@ fn main() {
             let pkg_outputs = if let Ok(pkg_outputs) = root.build() {
                 pkg_outputs
             } else {
-                println!(
+                log::error!(
                     "derivation {} does not build, skipping checks...",
                     root.drv_path
                 );
@@ -192,6 +193,7 @@ fn main() {
             }
 
             for dep in dep_relations.iter() {
+                // fixme: json
                 println!("{} has unused dependency: {}", root.drv_path, dep.drv_path);
             }
         });

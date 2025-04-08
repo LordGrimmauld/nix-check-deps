@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-use clap::Parser;
+use clap::{ArgAction, Parser};
 use clap_stdin::MaybeStdin;
 
 #[derive(Debug, Parser)]
@@ -9,20 +9,20 @@ pub struct Cli {
     /// package to evaluate
     pub attr: MaybeStdin<String>,
 
-    /// whether to try and scan for c header files in use
-    #[arg(long, default_value_t = true)]
+    /// Don't scan for c header files in use
+    #[clap(long = "no-check-headers", action = ArgAction::SetFalse)]
     pub check_headers: bool,
 
-    /// whether to try and scan pyproject for (optional) listed dependencies
-    #[arg(long, default_value_t = true)]
+    /// Don't scan for deps listed in pyproject
+    #[clap(long = "no-check-pyproject", action = ArgAction::SetFalse)]
     pub check_pyproject: bool,
 
-    /// whether to try and check env shebangs
-    #[arg(long, default_value_t = true)]
+    /// Don't scan for programs used in shebang lines
+    #[clap(long = "no-check-shebangs", action = ArgAction::SetFalse)]
     pub check_shebangs: bool,
 
-    /// whether to try and check binaries and shared objects for their library paths
-    #[arg(long, default_value_t = true)]
+    /// Don't check binaries and shared objects for their library paths
+    #[clap(long = "no-check-shared_objects", action = ArgAction::SetFalse)]
     pub check_shared_objects: bool,
 
     /// output used C/C++ headers
@@ -41,7 +41,7 @@ pub struct Cli {
     #[arg(long, default_value_t = String::from(""))]
     pub skip: String,
 
-    /// number of packages to check at once
+    /// number of packages to check at once [broken]
     #[arg(long, short, default_value_t = 1)]
     pub jobs: usize,
 }
