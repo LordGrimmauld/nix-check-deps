@@ -68,151 +68,151 @@ fn main() {
     let deps = drv.read_deps();
     scan_roots.insert(0, (drv, deps)); // insert top-level at the start so the nix build can build all dependents at once
 
-    let pool = ThreadPoolBuilder::new()
-        .num_threads(cli.jobs)
-        .build()
-        .unwrap();
+    // let pool = ThreadPoolBuilder::new()
+    //     .num_threads(cli.jobs)
+    //     .build()
+    //     .unwrap();
 
     let skipped: Vec<String> = cli.skip.split(",").map(str::to_owned).collect();
 
     let mut found_unused: HashMap<String, Vec<String>> = HashMap::new();
 
     // FIXME: this doesn't really check in parallel, this never worked in the first place
-    pool.install(|| {
-        scan_roots.iter_mut().for_each(|(root, dep_relations)| {
-            if skipped.iter().any(|s| root.matches_pname(s)) {
-                return;
-            }
+    // pool.install(|| {
+    scan_roots.iter_mut().for_each(|(root, dep_relations)| {
+        if skipped.iter().any(|s| root.matches_pname(s)) {
+            return;
+        }
 
-            // debug!("rels {:?}", dep_relations);
-            // debug!("root {:?}", root.drv_path);
+        // debug!("rels {:?}", dep_relations);
+        // debug!("root {:?}", root.drv_path);
 
-            dep_relations.retain(|dep_drv| {
-                !permitted_unused_deps
-                    .iter()
-                    .any(|re| re.is_match(&dep_drv.drv_path))
-            });
-
-            if cli.check_headers || cli.list_used_headers {
-                let start = Instant::now();
-                let used_headers = root.find_used_c_headers();
-                dep_relations.retain(|dep_drv| {
-                    dep_drv.build().as_ref().unwrap();
-                    !derivation::test_headers_of_package_used(
-                        &used_headers,
-                        &mut dep_drv.get_out_paths(),
-                    )
-                });
-                if cli.list_used_headers {
-                    for header in used_headers {
-                        info!("{} uses header: {}", root.drv_path, header);
-                    }
-                }
-                info!("check-headers took {:.2?} seconds", start.elapsed());
-            }
-
-            if cli.skip_dep_usage_check {
-                return;
-            }
-
-            if cli.check_pyproject {
-                let start = Instant::now();
-                let used_py_deps = root.find_used_pyproject_deps();
-                dep_relations
-                    .retain(|dep_drv| !used_py_deps.iter().any(|py| dep_drv.matches_pname(py)));
-                info!("check-pyproject took {:.2?} seconds", start.elapsed());
-            }
-
-            if cli.check_shebangs {
-                let start = Instant::now();
-                let used_shebangs = root.find_used_shebangs();
-                dep_relations.retain(|dep_drv| {
-                    !dep_drv
-                        .get_provided_binaries()
-                        .intersection(&used_shebangs)
-                        .any(|_| true)
-                });
-                info!("check-shebangs took {:.2?} seconds", start.elapsed());
-            }
-
-            if cli.check_shared_objects {
-                let start = Instant::now();
-                let used_shared_objects = root.find_used_shared_objects();
-                dep_relations.retain(|dep_drv| {
-                    !dep_drv
-                        .find_provided_shared_objects()
-                        .intersection(&used_shared_objects)
-                        .any(|_| true)
-                });
-                info!("check-shared-objects took {:.2?} seconds", start.elapsed());
-            }
-
-            // make sure the package exists in local store so it can be scanned
-            let pkg_outputs = if let Ok(pkg_outputs) = root.build() {
-                pkg_outputs
-            } else {
-                log::error!(
-                    "derivation {} does not build, skipping checks...",
-                    root.drv_path
-                );
-                return;
-            };
-
-            let mut searcher = Searcher::new();
-            searcher.set_binary_detection(BinaryDetection::none());
-            for output in pkg_outputs {
-                for e in Walk::new(output).flat_map(Result::into_iter) {
-                    let is_file = e.file_type().is_some_and(|f| f.is_file());
-                    let is_link = e.file_type().is_some_and(|f| f.is_symlink());
-
-                    if is_file {
-                        dep_relations.retain(|dep_drv| {
-                            let mut found = false;
-                            let regex: String = dep_drv
-                                .get_out_paths()
-                                .iter()
-                                .map(|dep| derivation::get_store_hash(dep))
-                                .collect::<Vec<String>>()
-                                .join("|");
-                            let matcher = RegexMatcher::new(&regex).unwrap();
-                            searcher
-                                .search_path(
-                                    &matcher,
-                                    e.path(),
-                                    Bytes(|_, _| {
-                                        found = true;
-                                        Ok(false) // stop reading the file
-                                    }),
-                                )
-                                .ok();
-                            !found
-                        });
-                    } else if is_link {
-                        dep_relations.retain(|dep_drv| {
-                            let p = fs::read_link(e.path()).unwrap();
-                            for dep in dep_drv.get_out_paths() {
-                                if p.to_string_lossy()
-                                    .contains(&derivation::get_store_hash(&dep))
-                                {
-                                    return false;
-                                }
-                            }
-                            true
-                        });
-                    }
-                }
-            }
-
-            let mut found_unused_drv = Vec::new();
-            for dep in dep_relations.iter() {
-                found_unused_drv.push(dep.drv_path.clone());
-                // fixme: json
-            }
-            if !found_unused_drv.is_empty() {
-                found_unused.insert(root.drv_path.clone(), found_unused_drv);
-            }
+        dep_relations.retain(|dep_drv| {
+            !permitted_unused_deps
+                .iter()
+                .any(|re| re.is_match(&dep_drv.drv_path))
         });
+
+        if cli.check_headers || cli.list_used_headers {
+            let start = Instant::now();
+            let used_headers = root.find_used_c_headers();
+            dep_relations.retain(|dep_drv| {
+                dep_drv.build().as_ref().unwrap();
+                !derivation::test_headers_of_package_used(
+                    &used_headers,
+                    &mut dep_drv.get_out_paths(),
+                )
+            });
+            if cli.list_used_headers {
+                for header in used_headers {
+                    info!("{} uses header: {}", root.drv_path, header);
+                }
+            }
+            info!("check-headers took {:.2?} seconds", start.elapsed());
+        }
+
+        if cli.skip_dep_usage_check {
+            return;
+        }
+
+        if cli.check_pyproject {
+            let start = Instant::now();
+            let used_py_deps = root.find_used_pyproject_deps();
+            dep_relations
+                .retain(|dep_drv| !used_py_deps.iter().any(|py| dep_drv.matches_pname(py)));
+            info!("check-pyproject took {:.2?} seconds", start.elapsed());
+        }
+
+        if cli.check_shebangs {
+            let start = Instant::now();
+            let used_shebangs = root.find_used_shebangs();
+            dep_relations.retain(|dep_drv| {
+                !dep_drv
+                    .get_provided_binaries()
+                    .intersection(&used_shebangs)
+                    .any(|_| true)
+            });
+            info!("check-shebangs took {:.2?} seconds", start.elapsed());
+        }
+
+        if cli.check_shared_objects {
+            let start = Instant::now();
+            let used_shared_objects = root.find_used_shared_objects();
+            dep_relations.retain(|dep_drv| {
+                !dep_drv
+                    .find_provided_shared_objects()
+                    .intersection(&used_shared_objects)
+                    .any(|_| true)
+            });
+            info!("check-shared-objects took {:.2?} seconds", start.elapsed());
+        }
+
+        // make sure the package exists in local store so it can be scanned
+        let pkg_outputs = if let Ok(pkg_outputs) = root.build() {
+            pkg_outputs
+        } else {
+            log::error!(
+                "derivation {} does not build, skipping checks...",
+                root.drv_path
+            );
+            return;
+        };
+
+        let mut searcher = Searcher::new();
+        searcher.set_binary_detection(BinaryDetection::none());
+        for output in pkg_outputs {
+            for e in Walk::new(output).flat_map(Result::into_iter) {
+                let is_file = e.file_type().is_some_and(|f| f.is_file());
+                let is_link = e.file_type().is_some_and(|f| f.is_symlink());
+
+                if is_file {
+                    dep_relations.retain(|dep_drv| {
+                        let mut found = false;
+                        let regex: String = dep_drv
+                            .get_out_paths()
+                            .iter()
+                            .map(|dep| derivation::get_store_hash(dep))
+                            .collect::<Vec<String>>()
+                            .join("|");
+                        let matcher = RegexMatcher::new(&regex).unwrap();
+                        searcher
+                            .search_path(
+                                &matcher,
+                                e.path(),
+                                Bytes(|_, _| {
+                                    found = true;
+                                    Ok(false) // stop reading the file
+                                }),
+                            )
+                            .ok();
+                        !found
+                    });
+                } else if is_link {
+                    dep_relations.retain(|dep_drv| {
+                        let p = fs::read_link(e.path()).unwrap();
+                        for dep in dep_drv.get_out_paths() {
+                            if p.to_string_lossy()
+                                .contains(&derivation::get_store_hash(&dep))
+                            {
+                                return false;
+                            }
+                        }
+                        true
+                    });
+                }
+            }
+        }
+
+        let mut found_unused_drv = Vec::new();
+        for dep in dep_relations.iter() {
+            found_unused_drv.push(dep.drv_path.clone());
+            // fixme: json
+        }
+        if !found_unused_drv.is_empty() {
+            found_unused.insert(root.drv_path.clone(), found_unused_drv);
+        }
     });
+    // });
 
     if cli.json {
         println!("{}", json!(found_unused));
