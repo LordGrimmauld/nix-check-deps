@@ -44,6 +44,7 @@
           devShell = pkgs.mkShell {
             buildInputs = [
               rustToolchain
+              pkgs.jq
             ];
           };
 

@@ -33,9 +33,9 @@ pub struct Cli {
     #[arg(long, default_value_t = false)]
     pub skip_dep_usage_check: bool,
 
-    /// output timing information
-    #[arg(long, short, default_value_t = false)]
-    pub benchmark: bool,
+    /// output json
+    #[arg(long, default_value_t = false)]
+    pub json: bool,
 
     /// drv names to skip
     #[arg(long, default_value_t = String::from(""))]

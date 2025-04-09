@@ -8,7 +8,8 @@ use log::info;
 use rayon::ThreadPoolBuilder;
 // use nix_compat::derivation::Derivation;
 use regex::Regex;
-use std::{path::Path, time::Instant};
+use serde_json::json;
+use std::{collections::HashMap, path::Path, time::Instant};
 
 use grep::{
     regex::RegexMatcher,
@@ -56,6 +57,8 @@ fn main() {
         .unwrap();
 
     let skipped: Vec<String> = cli.skip.split(",").map(str::to_owned).collect();
+
+    let mut found_unused: HashMap<String, Vec<String>> = HashMap::new();
 
     // FIXME: this doesn't really check in parallel, this never worked in the first place
     pool.install(|| {
@@ -184,10 +187,24 @@ fn main() {
                 }
             }
 
+            let mut found_unused_drv = Vec::new();
             for dep in dep_relations.iter() {
+                found_unused_drv.push(dep.drv_path.clone());
                 // fixme: json
-                println!("{} has unused dependency: {}", root.drv_path, dep.drv_path);
+            }
+            if !found_unused_drv.is_empty() {
+                found_unused.insert(root.drv_path.clone(), found_unused_drv);
             }
         });
     });
+
+    if cli.json {
+        println!("{}", json!(found_unused));
+    } else {
+        for (root, unused) in found_unused {
+            for dep in unused {
+                println!("{} has unused dependency: {}", root, dep);
+            }
+        }
+    }
 }
