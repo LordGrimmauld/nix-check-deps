@@ -91,6 +91,8 @@ pub struct Derivation {
     pub drv_path: String,
     #[serde(skip_deserializing)]
     extracted_src_archive: OnceCell<Option<TempDir>>,
+    #[serde(skip_deserializing)]
+    build_outputs: OnceCell<Result<Vec<String>, std::io::Error>>,
 }
 
 impl Derivation {
@@ -119,11 +121,18 @@ impl Derivation {
         self.input_drvs.clone().into_keys().collect()
     }
 
-    fn read_src_dir(&self) -> Option<PathBuf> {
-        let src_drv = self.env.src.as_ref()?;
-        // TODO: maybe integrate with https://github.com/milahu/nix-build-debug or similar
+    fn get_src_drv(&self) -> Option<&Derivation> {
+        let src_drv_path = self.env.src.as_ref()?;
+        self.get_inputs()
+            .iter()
+            .find(|i| i.get_out_paths().contains(src_drv_path))
+    }
 
-        let build_results = build_drv_internal(src_drv).ok()?;
+    fn read_src_dir(&self) -> Option<PathBuf> {
+        // TODO: maybe integrate with https://github.com/milahu/nix-build-debug or similar
+        let src = self.get_src_drv()?;
+        let build_results = src.build().as_ref().ok()?;
+
         let src_archive_path = PathBuf::from(build_results.first()?);
         if !src_archive_path.exists() {
             return None;
@@ -138,19 +147,21 @@ impl Derivation {
             .map(|t| t.path().to_path_buf())
     }
 
+    fn get_inputs(&self) -> &Vec<Derivation> {
+        self.parsed_input_drvs.get_or_init(|| {
+            self.input_drvs
+                .keys()
+                .flat_map(|p| Derivation::read_drv(p).into_iter())
+                .collect()
+        })
+    }
+
     pub fn get_out_paths(&self) -> Vec<String> {
         let mut outputs: Vec<String> = self.outputs.values().map(DrvOutput::path).collect();
 
         if let Some(pname) = &self.env.pname {
-            let inputs = self.parsed_input_drvs.get_or_init(|| {
-                self.input_drvs
-                    .keys()
-                    .flat_map(|p| Derivation::read_drv(p).into_iter())
-                    .collect()
-            });
-
             outputs.extend(
-                inputs
+                self.get_inputs()
                     .iter()
                     .filter(|d| d.matches_pname(pname))
                     .flat_map(|d| d.get_out_paths()),
@@ -376,13 +387,27 @@ impl Derivation {
         used_headers
     }
 
-    pub fn build(&self) -> Result<Vec<String>, std::io::Error> {
-        build_drv_internal(&self.drv_path)?;
-        Ok(self.get_out_paths())
+    pub fn build(&self) -> &Result<Vec<String>, std::io::Error> {
+        self.build_outputs.get_or_init(|| {
+            let build_path: &str = &self.drv_path;
+            let build_path = if build_path.ends_with(".drv") {
+                &format!("{}^*", build_path)
+            } else {
+                build_path
+            };
+            Command::new("nix")
+                .arg("build")
+                .arg(build_path)
+                .arg("--no-link")
+                .stdout(Stdio::piped())
+                .stderr(Stdio::inherit())
+                .status()?;
+            Ok(self.get_out_paths())
+        })
     }
 
     pub fn get_provided_binaries(&self) -> HashSet<String> {
-        self.build().map_or_else(
+        self.build().as_ref().map_or_else(
             |_| HashSet::new(),
             |outputs| {
                 let mut buf = HashSet::new();
@@ -502,28 +527,4 @@ pub fn test_headers_of_package_used(
         }
     }
     false
-}
-
-// FIXME: this might still return Ok even if drv fails to actually build?
-fn build_drv_internal(build_path: &str) -> Result<Vec<String>, std::io::Error> {
-    let build_path = if build_path.ends_with(".drv") {
-        &format!("{}^*", build_path)
-    } else {
-        build_path
-    };
-    let pkg_outputs_raw = Command::new("nix")
-        .arg("build")
-        .arg(build_path)
-        .arg("--print-out-paths")
-        .arg("--no-link")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .spawn()?
-        .stdout
-        .unwrap();
-
-    Ok(BufReader::new(pkg_outputs_raw)
-        .lines()
-        .collect::<Result<_, _>>()
-        .unwrap_or_else(|_| Vec::new()))
 }

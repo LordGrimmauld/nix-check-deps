@@ -80,7 +80,7 @@ fn main() {
                 let start = Instant::now();
                 let used_headers = root.find_used_c_headers();
                 dep_relations.retain(|dep_drv| {
-                    dep_drv.build().unwrap();
+                    dep_drv.build().as_ref().unwrap();
                     !derivation::test_headers_of_package_used(
                         &used_headers,
                         &mut dep_drv.get_out_paths(),
@@ -131,7 +131,6 @@ fn main() {
             }
 
             // make sure the package exists in local store so it can be scanned
-            // FIXME: this might still return Ok even if drv fails to actually build?
             let pkg_outputs = if let Ok(pkg_outputs) = root.build() {
                 pkg_outputs
             } else {
@@ -145,7 +144,7 @@ fn main() {
             let mut searcher = Searcher::new();
             searcher.set_binary_detection(BinaryDetection::none());
             for output in pkg_outputs {
-                for e in Walk::new(&output).flat_map(Result::into_iter) {
+                for e in Walk::new(output).flat_map(Result::into_iter) {
                     let is_file = e.file_type().is_some_and(|f| f.is_file());
                     let is_link = e.file_type().is_some_and(|f| f.is_symlink());
 
