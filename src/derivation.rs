@@ -185,8 +185,10 @@ impl Derivation {
         let check_inputs = self.env.get_check_inputs();
 
         let all_inputs = self.get_input_drv_paths();
-        for dep_drv_path in all_inputs {
-            let dep_drv = Derivation::read_drv(&dep_drv_path).unwrap();
+        for dep_drv in all_inputs
+            .iter()
+            .flat_map(|dep| Derivation::read_drv(dep).into_iter())
+        {
             let propagated_drvs = dep_drv.env.get_propagated_build_inputs();
             let outputs: Vec<String> = dep_drv.get_out_paths();
 
