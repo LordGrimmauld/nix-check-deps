@@ -28,6 +28,8 @@ use std::{
     process::{Command, Stdio},
 };
 
+use crate::get_nix_flags;
+
 #[derive(Deserialize, Hash, Eq, PartialEq, Debug, Clone)]
 struct DrvOutput {
     path: String,
@@ -422,6 +424,7 @@ impl Derivation {
                 .arg("build")
                 .arg(build_path)
                 .arg("--no-link")
+                .args(get_nix_flags())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::inherit())
                 .status()?;
@@ -515,6 +518,7 @@ pub fn eval_attr_to_drv_path(attr: &str) -> Option<String> {
         .arg("--apply")
         .arg("attr: attr.drvPath")
         .arg("--json")
+        .args(get_nix_flags())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
         .spawn()

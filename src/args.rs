@@ -48,4 +48,8 @@ pub struct Cli {
     /// number of packages to check at once [broken]
     #[arg(long, short, default_value_t = 1)]
     pub jobs: usize,
+
+    /// flags to be passed to `nix build` and `nix eval`
+    #[arg(last(false), allow_hyphen_values = true, value_delimiter(' '))]
+    pub nix_flags: Option<Vec<String>>,
 }

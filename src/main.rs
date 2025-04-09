@@ -5,6 +5,7 @@ use clap::Parser;
 use derivation::Derivation;
 use ignore::Walk;
 use log::info;
+use once_cell::sync::OnceCell;
 use rayon::ThreadPoolBuilder;
 // use nix_compat::derivation::Derivation;
 use regex::Regex;
@@ -17,6 +18,12 @@ use grep::{
 };
 
 use std::fs::{self};
+
+static NIX_FLAGS: OnceCell<Vec<String>> = OnceCell::new();
+
+pub fn get_nix_flags() -> &'static Vec<String> {
+    NIX_FLAGS.get_or_init(Vec::new)
+}
 
 fn main() {
     env_logger::init();
@@ -37,6 +44,7 @@ fn main() {
 
     let cli = Cli::parse();
     let attr: String = cli.attr.to_string();
+    NIX_FLAGS.set(cli.nix_flags.unwrap_or_else(Vec::new)).ok();
 
     let drv_logic = attr.ends_with(".drv") && Path::new(&attr).exists();
     let attr = if drv_logic {
