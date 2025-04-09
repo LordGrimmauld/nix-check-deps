@@ -37,6 +37,10 @@ pub struct Cli {
     #[arg(long, default_value_t = false)]
     pub json: bool,
 
+    /// scan all transient dependents of a derivation
+    #[arg(long, default_value_t = false)]
+    pub tree: bool,
+
     /// drv names to skip
     #[arg(long, default_value_t = String::from(""))]
     pub skip: String,

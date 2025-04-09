@@ -2,7 +2,7 @@ use bzip2::read::BzDecoder;
 use flate2::read::GzDecoder;
 use ignore::Walk;
 use lddtree::DependencyAnalyzer;
-use log::{debug, warn};
+use log::{debug, error, warn};
 use once_cell::sync::OnceCell;
 use pyproject_toml::PyProjectToml;
 use regex::{Regex, RegexBuilder};
@@ -110,7 +110,11 @@ impl Derivation {
             .stderr(Stdio::inherit())
             .spawn()
             .ok()?;
-        let drvs: HashMap<String, Derivation> = serde_json::from_reader(output.stdout?).unwrap(); // .ok()?; // FIXME ?
+        let drvs: HashMap<String, Derivation> = serde_json::from_reader(output.stdout?)
+            .inspect_err(|e| {
+                error!("Can not parse drv {}: {}", drv_path, e);
+            })
+            .ok()?; // FIXME ?
         drvs.into_iter().last().map(|(path, mut drv)| {
             drv.drv_path = path.to_owned();
             drv
@@ -337,6 +341,25 @@ impl Derivation {
         }
         // println!("provided so: {:?}", shared_objects);
         shared_objects
+    }
+
+    pub fn get_requisites(&self) -> Vec<Derivation> {
+        // nix-store --query -R /nix/store/1y6qm7rx3pk5dzbr5r3hhzs1mk17sq7s-isl-0.20.drv
+
+        Command::new("nix-store")
+            .arg("--query")
+            .arg("-R")
+            .arg(&self.drv_path)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .output()
+            .unwrap()
+            .stdout
+            .lines()
+            .flat_map(|l| l.into_iter())
+            .filter(|l| l.ends_with(".drv"))
+            .flat_map(|p| Derivation::read_drv(&p).into_iter())
+            .collect()
     }
 
     pub fn find_used_c_headers(&self) -> HashSet<String> {

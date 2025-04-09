@@ -47,9 +47,18 @@ fn main() {
 
     let drv = Derivation::read_drv(&attr).unwrap();
 
+    // [ ( dependent, [ dependency ] ) ]
+    let mut scan_roots: Vec<(Derivation, Vec<Derivation>)> = Vec::new();
+
+    if cli.tree {
+        for drv in drv.get_requisites() {
+            let deps = drv.read_deps();
+            scan_roots.push((drv, deps));
+        }
+    }
+
     let deps = drv.read_deps();
-    // (dependent, {dependency_name -> [outputs] } )
-    let mut scan_roots: Vec<(Derivation, Vec<Derivation>)> = vec![(drv, deps)];
+    scan_roots.insert(0, (drv, deps)); // insert top-level at the start so the nix build can build all dependents at once
 
     let pool = ThreadPoolBuilder::new()
         .num_threads(cli.jobs)
