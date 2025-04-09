@@ -456,6 +456,29 @@ impl Derivation {
             },
         )
     }
+
+    pub fn get_provided_c_headers(&self) -> HashSet<String> {
+        self.build().as_ref().map_or_else(
+            |_| HashSet::new(),
+            |outputs| {
+                let mut buf = HashSet::new();
+                outputs.iter().for_each(|out| {
+                    let mut out = PathBuf::from_str(out).unwrap();
+                    out.push("include");
+                    if !out.exists() {
+                        return;
+                    }
+                    Walk::new(out.as_path())
+                        .flat_map(|r| r.into_iter())
+                        .map(|p| p.file_name().to_string_lossy().into_owned())
+                        .for_each(|f| {
+                            buf.insert(f);
+                        });
+                });
+                buf
+            },
+        )
+    }
 }
 
 impl PartialEq for Derivation {
@@ -530,30 +553,4 @@ pub fn eval_attr_to_drv_path(attr: &str) -> Option<String> {
 
 pub fn get_store_hash(store_path: &str) -> String {
     store_path.strip_prefix("/nix/store/").unwrap_or(store_path)[..32].to_owned()
-}
-
-pub fn test_headers_of_package_used(
-    used_headers: &HashSet<String>,
-    dep_outputs: &mut Vec<String>,
-) -> bool {
-    for dep_output in dep_outputs {
-        for e in Walk::new(&dep_output).flat_map(Result::into_iter) {
-            let is_dir = fs::canonicalize(e.path()).ok().is_some_and(|p| p.is_dir());
-            if is_dir {
-                continue;
-            }
-            let header = e
-                .into_path()
-                .file_name()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .to_string();
-            if used_headers.contains(&header) {
-                debug!("found matching header {} for pkg {}", header, dep_output);
-                return true;
-            }
-        }
-    }
-    false
 }

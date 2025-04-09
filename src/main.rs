@@ -6,8 +6,7 @@ use derivation::Derivation;
 use ignore::Walk;
 use log::info;
 use once_cell::sync::OnceCell;
-use rayon::ThreadPoolBuilder;
-// use nix_compat::derivation::Derivation;
+// use rayon::ThreadPoolBuilder;
 use regex::Regex;
 use serde_json::json;
 use std::{collections::HashMap, path::Path, time::Instant};
@@ -97,11 +96,10 @@ fn main() {
             let start = Instant::now();
             let used_headers = root.find_used_c_headers();
             dep_relations.retain(|dep_drv| {
-                dep_drv.build().as_ref().unwrap();
-                !derivation::test_headers_of_package_used(
-                    &used_headers,
-                    &mut dep_drv.get_out_paths(),
-                )
+                !dep_drv
+                    .get_provided_c_headers()
+                    .intersection(&used_headers)
+                    .any(|_| true)
             });
             if cli.list_used_headers {
                 for header in used_headers {
