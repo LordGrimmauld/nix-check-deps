@@ -3,11 +3,6 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable-small";
-    flake-utils.url = "github:numtide/flake-utils";
-    rust-overlay = {
-      url = "github:oxalica/rust-overlay";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
     nix-github-actions = {
       url = "github:nix-community/nix-github-actions";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -22,60 +17,94 @@
     {
       self,
       nixpkgs,
-      flake-utils,
-      rust-overlay,
       nix-github-actions,
       treefmt-nix,
       ...
     }:
     let
-      build-nix-check-deps-pkg =
-        pkgs:
-        pkgs.rustPlatform.buildRustPackage {
-          name = "nix-check-deps";
-          version = "1.0.0";
-          src = ./.;
+      inherit (nixpkgs) lib;
+      cargo-toml = (lib.importTOML ./Cargo.toml).package;
+      inherit (cargo-toml) name;
+      forEachSystem =
+        f:
+        builtins.listToAttrs (
+          map
+            (system: {
+              name = system;
+              value = f {
+                inherit system;
+                pkgs = nixpkgs.legacyPackages.${system};
+              };
+            })
+            [
+              "x86_64-linux"
+              "aarch64-linux"
+            ]
+        );
+
+      package =
+        {
+          lib,
+          rustPlatform,
+        }:
+        rustPlatform.buildRustPackage {
+          pname = name;
+          inherit (cargo-toml) version;
+          src = lib.cleanSource ./.;
           cargoLock.lockFile = ./Cargo.lock;
+
+          strictDeps = true;
+          __structuredAttrs = true;
+
+          meta = {
+            inherit (cargo-toml) description;
+            mainProgram = name;
+            license = lib.getLicenseFromSpdxId cargo-toml.license;
+            maintainers = with lib.maintainers; [ grimmauld ];
+          };
         };
 
-      outputs = flake-utils.lib.eachDefaultSystem (
-        system:
-        let
-          overlays = [ (import rust-overlay) ];
-          pkgs = import nixpkgs {
-            inherit system overlays;
-          };
-          rustToolchain = pkgs.pkgsBuildHost.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
-          treefmtEval = treefmt-nix.lib.evalModule pkgs ./treefmt.nix;
-        in
-        rec {
-          packages.nix-check-deps = build-nix-check-deps-pkg pkgs;
-
-          devShell = pkgs.mkShell {
-            buildInputs = [
-              rustToolchain
-              pkgs.jq
-            ];
-          };
-
-          formatter = treefmtEval.config.build.wrapper;
-
-          defaultPackage = self.packages.${system}.nix-check-deps;
-
-          checks = {
-            formatting = treefmtEval.config.build.check self;
-          } // packages;
+      treefmtEval = (lib.flip treefmt-nix.lib.evalModule) ./treefmt.nix;
+    in
+    {
+      packages = forEachSystem (
+        { pkgs, system }:
+        {
+          ${name} = pkgs.callPackage package { };
+          default = self.packages.${system}.${name};
         }
       );
-    in
-    outputs
-    // {
 
+      devShells = forEachSystem (
+        { pkgs, system }:
+        {
+          default = pkgs.mkShell {
+            inputsFrom = [ self.packages.${system}.default ];
+            packages = [
+              pkgs.clippy
+              pkgs.rust-analyzer
+              pkgs.rustfmt
+            ];
+          };
+        }
+      );
+
+      formatter = forEachSystem ({ pkgs, ... }: (treefmtEval pkgs).config.build.wrapper);
+
+      checks = forEachSystem (
+        { pkgs, system }:
+        {
+          formatting = (treefmtEval pkgs).config.build.check self;
+        }
+        // self.packages.${system}
+      );
       githubActions = nix-github-actions.lib.mkGithubMatrix {
-        checks = nixpkgs.lib.getAttrs [ "x86_64-linux" ] outputs.checks;
+        checks = { inherit (self.checks) x86_64-linux; };
       };
 
-      overlays.default = final: prev: { nix-check-deps = build-nix-check-deps-pkg prev; };
+      overlays.default = final: prev: {
+        ${name} = final.callPackage package { };
+      };
 
       nixosModules.default = {
         nixpkgs.overlays = [ self.overlays.default ];

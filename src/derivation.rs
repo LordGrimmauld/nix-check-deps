@@ -19,7 +19,7 @@ use xz::read::XzDecoder;
 
 use grep::{
     regex::RegexMatcher,
-    searcher::{sinks::UTF8, BinaryDetection, Searcher},
+    searcher::{BinaryDetection, Searcher, sinks::UTF8},
 };
 
 use std::{

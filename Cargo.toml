@@ -22,8 +22,18 @@ env_logger = "0.11.8"
 
 [package]
 name = "nix-check-deps"
-version = "0.1.0"
+version = "1.0.1"
 edition = "2021"
+description = "Check whether nix package dependencies are actually required"
+license = "BSD-3-Clause"
 authors = ["Grimmauld <grimmauld@grimmauld.de>"]
-description = "Search for config files in XDG_CONFIG_DIRS"
-license-file = "LICENSE"
+readme = "README.md"
+repository = "https://github.com/LordGrimmauld/nix-check-deps"
+exclude = [
+  "result",
+  "result-*",
+  "*.nix",
+  "nix/",
+  ".gitignore",
+  ".github/"
+]

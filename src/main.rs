@@ -13,7 +13,7 @@ use std::{collections::HashMap, path::Path, time::Instant};
 
 use grep::{
     regex::RegexMatcher,
-    searcher::{sinks::Bytes, BinaryDetection, Searcher},
+    searcher::{BinaryDetection, Searcher, sinks::Bytes},
 };
 
 use std::fs::{self};
