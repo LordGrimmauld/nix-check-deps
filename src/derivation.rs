@@ -17,10 +17,7 @@ use tar::Archive;
 use tempfile::TempDir;
 use xz::read::XzDecoder;
 
-use grep::{
-    regex::RegexMatcher,
-    searcher::{BinaryDetection, sinks::UTF8},
-};
+use grep::{regex::RegexMatcher, searcher::sinks::UTF8};
 
 use std::{
     collections::HashMap,
@@ -376,7 +373,7 @@ impl Derivation {
 
         // find used headers
         let mut searcher = grep::searcher::Searcher::new();
-        searcher.set_binary_detection(BinaryDetection::none());
+        searcher.set_binary_detection(grep::searcher::BinaryDetection::none());
         // assumption: valid C/C++ code
         let header_include_regex_str = r##"^\s*#\s*include\s*(<|")([^>"]+)(>|").*$"##;
         let header_include_regex = RegexBuilder::new(header_include_regex_str)

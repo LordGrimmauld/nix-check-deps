@@ -11,10 +11,7 @@ use regex::Regex;
 use serde_json::json;
 use std::{collections::HashMap, path::Path, time::Instant};
 
-use grep::{
-    regex::RegexMatcher,
-    searcher::{BinaryDetection, sinks::Bytes},
-};
+use grep::{regex::RegexMatcher, searcher::sinks::Bytes};
 
 use std::fs::{self};
 
@@ -157,7 +154,7 @@ fn main() {
         };
 
         let mut searcher = grep::searcher::Searcher::new();
-        searcher.set_binary_detection(BinaryDetection::none());
+        searcher.set_binary_detection(grep::searcher::BinaryDetection::none());
         for output in pkg_outputs {
             for e in Walk::new(output).flat_map(Result::into_iter) {
                 let is_file = e.file_type().is_some_and(|f| f.is_file());
