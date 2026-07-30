@@ -72,6 +72,7 @@ impl DrvEnv {
             s.split_whitespace().map(str::to_owned).collect()
         })
     }
+    #[allow(unused)]
     pub fn get_propagated_build_inputs(&self) -> Vec<String> {
         self.propagated_build_inputs
             .as_ref()
@@ -84,7 +85,7 @@ impl DrvEnv {
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Derivation {
-    pub env: DrvEnv,
+    env: DrvEnv,
     outputs: HashMap<String, DrvOutput>,
     input_drvs: HashMap<String, DrvInput>,
     #[serde(skip_deserializing)]
@@ -181,7 +182,7 @@ impl Derivation {
         let dev_inputs: Vec<String> = self.env.get_build_inputs();
 
         let mut dep_relations: Vec<Derivation> = Vec::new();
-        let mut propagated: Vec<String> = Vec::new();
+        // let mut propagated: Vec<String> = Vec::new();
         let check_inputs = self.env.get_check_inputs();
 
         let all_inputs = self.get_input_drv_paths();
@@ -198,11 +199,11 @@ impl Derivation {
             // propagated.append(&mut propagated_drvs.clone());
         }
 
-        dep_relations.retain(|dep_drv| {
-            !propagated
-                .iter()
-                .any(|p| dep_drv.get_out_paths().contains(p))
-        });
+        // dep_relations.retain(|dep_drv| {
+        //     !propagated
+        //         .iter()
+        //         .any(|p| dep_drv.get_out_paths().contains(p))
+        // });
         dep_relations.retain(|dep_drv| {
             !check_inputs
                 .iter()
