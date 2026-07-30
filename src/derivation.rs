@@ -375,7 +375,7 @@ impl Derivation {
         };
 
         // find used headers
-        let mut searcher = searcher::Searcher::new();
+        let mut searcher = grep::searcher::Searcher::new();
         searcher.set_binary_detection(BinaryDetection::none());
         // assumption: valid C/C++ code
         let header_include_regex_str = r##"^\s*#\s*include\s*(<|")([^>"]+)(>|").*$"##;

@@ -156,7 +156,7 @@ fn main() {
             return;
         };
 
-        let mut searcher = searcher::Searcher::new();
+        let mut searcher = grep::searcher::Searcher::new();
         searcher.set_binary_detection(BinaryDetection::none());
         for output in pkg_outputs {
             for e in Walk::new(output).flat_map(Result::into_iter) {
