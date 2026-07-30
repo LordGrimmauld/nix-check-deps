@@ -19,7 +19,7 @@ use xz::read::XzDecoder;
 
 use grep::{
     regex::RegexMatcher,
-    searcher::{BinaryDetection, Searcher, sinks::UTF8},
+    searcher::{sinks::UTF8, BinaryDetection, Searcher},
 };
 
 use std::{
@@ -72,7 +72,7 @@ impl DrvEnv {
             s.split_whitespace().map(str::to_owned).collect()
         })
     }
-    fn get_propagated_build_inputs(&self) -> Vec<String> {
+    pub fn get_propagated_build_inputs(&self) -> Vec<String> {
         self.propagated_build_inputs
             .as_ref()
             .map_or_else(Vec::new, |s| {
@@ -84,7 +84,7 @@ impl DrvEnv {
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Derivation {
-    env: DrvEnv,
+    pub env: DrvEnv,
     outputs: HashMap<String, DrvOutput>,
     input_drvs: HashMap<String, DrvInput>,
     #[serde(skip_deserializing)]
@@ -189,13 +189,13 @@ impl Derivation {
             .iter()
             .flat_map(|dep| Derivation::read_drv(dep).into_iter())
         {
-            let propagated_drvs = dep_drv.env.get_propagated_build_inputs();
+            // let propagated_drvs = dep_drv.env.get_propagated_build_inputs();
             let outputs: Vec<String> = dep_drv.get_out_paths();
 
             if outputs.iter().any(|o| dev_inputs.contains(o)) {
                 dep_relations.push(dep_drv);
             }
-            propagated.append(&mut propagated_drvs.clone());
+            // propagated.append(&mut propagated_drvs.clone());
         }
 
         dep_relations.retain(|dep_drv| {

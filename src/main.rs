@@ -13,7 +13,7 @@ use std::{collections::HashMap, path::Path, time::Instant};
 
 use grep::{
     regex::RegexMatcher,
-    searcher::{BinaryDetection, Searcher, sinks::Bytes},
+    searcher::{sinks::Bytes, BinaryDetection, Searcher},
 };
 
 use std::fs::{self};
@@ -28,17 +28,17 @@ fn main() {
     env_logger::init();
     let permitted_unused_deps = vec![
         Regex::new("iconv-").unwrap(),
-        Regex::new("gtest-").unwrap(),
-        Regex::new("gbenchmark-").unwrap(),
-        Regex::new("wayland-protocols").unwrap(),
-        Regex::new("-dbus").unwrap(),
-        Regex::new("-polkit").unwrap(),
-        Regex::new("-systemd").unwrap(),
-        Regex::new("python3\\..*-mock-").unwrap(),
-        Regex::new("python3\\..*-pytest-").unwrap(),
-        Regex::new("perl-?5\\.").unwrap(),
-        Regex::new("-check-").unwrap(),
-        Regex::new(r"-hook(\.drv(\^\**)?)?$").unwrap(),
+        // Regex::new("gtest-").unwrap(),
+        // Regex::new("gbenchmark-").unwrap(),
+        // Regex::new("wayland-protocols").unwrap(),
+        // Regex::new("-dbus").unwrap(),
+        // Regex::new("-polkit").unwrap(),
+        // Regex::new("-systemd").unwrap(),
+        // Regex::new("python3\\..*-mock-").unwrap(),
+        // Regex::new("python3\\..*-pytest-").unwrap(),
+        // Regex::new("perl-?5\\.").unwrap(),
+        // Regex::new("-check-").unwrap(),
+        // Regex::new(r"-hook(\.drv(\^\**)?)?$").unwrap(),
     ];
 
     let cli = Cli::parse();
