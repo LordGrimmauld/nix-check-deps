@@ -19,7 +19,7 @@ use xz::read::XzDecoder;
 
 use grep::{
     regex::RegexMatcher,
-    searcher::{BinaryDetection, Searcher, sinks::UTF8},
+    searcher::{BinaryDetection, sinks::UTF8},
 };
 
 use std::{
@@ -375,7 +375,7 @@ impl Derivation {
         };
 
         // find used headers
-        let mut searcher = Searcher::new();
+        let mut searcher = searcher::Searcher::new();
         searcher.set_binary_detection(BinaryDetection::none());
         // assumption: valid C/C++ code
         let header_include_regex_str = r##"^\s*#\s*include\s*(<|")([^>"]+)(>|").*$"##;

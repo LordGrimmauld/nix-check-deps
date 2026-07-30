@@ -13,7 +13,7 @@ use std::{collections::HashMap, path::Path, time::Instant};
 
 use grep::{
     regex::RegexMatcher,
-    searcher::{BinaryDetection, Searcher, sinks::Bytes},
+    searcher::{BinaryDetection, sinks::Bytes},
 };
 
 use std::fs::{self};
@@ -156,7 +156,7 @@ fn main() {
             return;
         };
 
-        let mut searcher = Searcher::new();
+        let mut searcher = searcher::Searcher::new();
         searcher.set_binary_detection(BinaryDetection::none());
         for output in pkg_outputs {
             for e in Walk::new(output).flat_map(Result::into_iter) {
