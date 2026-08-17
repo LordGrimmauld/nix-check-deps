@@ -337,7 +337,7 @@ impl Derivation {
                             || ft.mime_type() == "application/x-sharedlib"
                     });
                 if is_so {
-                    shared_objects.extend(fs::canonicalize(e.path()).into_iter());
+                    shared_objects.extend(fs::canonicalize(e.path()));
                 }
             }
         }

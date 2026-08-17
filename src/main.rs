@@ -23,8 +23,8 @@ pub fn get_nix_flags() -> &'static Vec<String> {
 
 fn main() {
     env_logger::init();
-    let permitted_unused_deps = vec![
-        Regex::new("iconv-").unwrap(),
+    let permitted_unused_deps: [Regex; _] = [
+        // Regex::new("iconv-").unwrap(),
         // Regex::new("gtest-").unwrap(),
         // Regex::new("gbenchmark-").unwrap(),
         // Regex::new("wayland-protocols").unwrap(),
